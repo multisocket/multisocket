@@ -2,6 +2,7 @@ package options
 
 import (
 	"errors"
+	"math"
 	"sync"
 	"time"
 )
@@ -20,7 +21,7 @@ type (
 	// Option is an option item.
 	Option interface {
 		Name() interface{}
-		Validate(val interface{}) error
+		Validate(val interface{}) (newVal interface{}, err error)
 	}
 
 	// OptionValue option value pair
@@ -71,8 +72,8 @@ type (
 		baseOption
 	}
 
-	// UInt8Option is option with uint8 value.
-	UInt8Option interface {
+	// Uint8Option is option with uint8 value.
+	Uint8Option interface {
 		Option
 		Value(val interface{}) uint8
 	}
@@ -122,7 +123,7 @@ func (opts *options) acceptOption(opt Option) bool {
 
 // SetOption add an option value.
 func (opts *options) SetOption(opt Option, val interface{}) (err error) {
-	if err = opt.Validate(val); err != nil {
+	if val, err = opt.Validate(val); err != nil {
 		return
 	}
 
@@ -149,7 +150,7 @@ func (opts *options) WithOption(opt Option, val interface{}) Options {
 }
 
 func (opts *options) SetOptionIfNotExists(opt Option, val interface{}) (err error) {
-	if err = opt.Validate(val); err != nil {
+	if val, err = opt.Validate(val); err != nil {
 		return
 	}
 
@@ -218,11 +219,13 @@ func NewBoolOption(name interface{}) BoolOption {
 }
 
 // Validate validate the option value
-func (o *boolOption) Validate(val interface{}) error {
+func (o *boolOption) Validate(val interface{}) (newVal interface{}, err error) {
 	if _, ok := val.(bool); !ok {
-		return ErrInvalidOptionValue
+		err = ErrInvalidOptionValue
+		return
 	}
-	return nil
+	newVal = val
+	return
 }
 
 // Value get option's value, must ensure option value is not empty
@@ -236,11 +239,13 @@ func NewTimeDurationOption(name interface{}) TimeDurationOption {
 }
 
 // Validate validate the option value
-func (o *timeDurationOption) Validate(val interface{}) error {
+func (o *timeDurationOption) Validate(val interface{}) (newVal interface{}, err error) {
 	if _, ok := val.(time.Duration); !ok {
-		return ErrInvalidOptionValue
+		err = ErrInvalidOptionValue
+		return
 	}
-	return nil
+	newVal = val
+	return
 }
 
 // Value get option's value, must ensure option value is not empty
@@ -254,11 +259,13 @@ func NewIntOption(name interface{}) IntOption {
 }
 
 // Validate validate the option value
-func (o *intOption) Validate(val interface{}) error {
+func (o *intOption) Validate(val interface{}) (newVal interface{}, err error) {
 	if _, ok := val.(int); !ok {
-		return ErrInvalidOptionValue
+		err = ErrInvalidOptionValue
+		return
 	}
-	return nil
+	newVal = val
+	return
 }
 
 // Value get option's value, must ensure option value is not empty
@@ -266,17 +273,26 @@ func (o *intOption) Value(val interface{}) int {
 	return val.(int)
 }
 
-// NewUInt8Option create an uint8 option
-func NewUInt8Option(name interface{}) UInt8Option {
+// NewUint8Option create an uint8 option
+func NewUint8Option(name interface{}) Uint8Option {
 	return &uint8Option{baseOption{name}}
 }
 
 // Validate validate the option value
-func (o *uint8Option) Validate(val interface{}) error {
-	if _, ok := val.(uint8); !ok {
-		return ErrInvalidOptionValue
+func (o *uint8Option) Validate(val interface{}) (newVal interface{}, err error) {
+	switch x := val.(type) {
+	case uint8:
+		newVal = x
+	case int:
+		if x >= 0 && x <= math.MaxUint8 {
+			newVal = uint8(x)
+			break
+		}
+		err = ErrInvalidOptionValue
+	default:
+		err = ErrInvalidOptionValue
 	}
-	return nil
+	return
 }
 
 // Value get option's value, must ensure option value is not empty
