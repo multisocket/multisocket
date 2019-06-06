@@ -3,6 +3,7 @@ package sender
 import (
 	"sync"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/socket"
 )
@@ -10,6 +11,9 @@ import (
 type (
 	sender struct {
 		options.Options
+
+		sendType     SendType
+		pipeSelector PipeSelector
 
 		sync.Mutex
 		attachedConnectors map[socket.Connector]struct{}
@@ -20,35 +24,84 @@ type (
 	}
 
 	pipe struct {
-		p     socket.Pipe
-		sendq chan *socket.Message
+		closedq chan struct{}
+		p       socket.Pipe
+		sendq   chan *socket.Message
+	}
+
+	// SendType 0, 1, n, N
+	SendType int
+
+	// PipeSelector is for selecting pipes to send.
+	PipeSelector interface {
+		Select(pipes map[uint32]*pipe) []*pipe
 	}
 )
 
+// sender types
 const (
-	defaultSendQueueSize = 128
+	// random select one pipe to send
+	SendOne SendType = iota
+	// select some pipes to send
+	SendSome
+	// send to all pipes
+	SendAll
+)
+
+const (
+	defaultSendQueueSize = uint16(8)
 )
 
 func newPipe(p socket.Pipe) *pipe {
 	return &pipe{
-		p:     p,
-		sendq: make(chan *socket.Message, defaultSendQueueSize),
+		closedq: make(chan struct{}),
+		p:       p,
+		sendq:   make(chan *socket.Message, defaultSendQueueSize),
 	}
 }
 
-// New create a sender
+func (p *pipe) pushMsg(msg *socket.Message) error {
+	select {
+	case <-p.closedq:
+		return ErrPipeClosed
+	default:
+		// TODO: add send timeout
+		p.sendq <- msg
+	}
+	return nil
+}
+
+// New create a SendOne sender
 func New() socket.Sender {
+	return newSender(SendOne, nil)
+}
+
+// NewSendAll create a SendAll sender
+func NewSendAll() socket.Sender {
+	return newSender(SendOne, nil)
+}
+
+// NewSelectSend create a SendSome sender
+func NewSelectSend(pipeSelector PipeSelector) socket.Sender {
+	return newSender(SendSome, pipeSelector)
+}
+
+func newSender(sendType SendType, pipeSelector PipeSelector) socket.Sender {
 	return &sender{
 		Options:            options.NewOptions(),
+		sendType:           sendType,
+		pipeSelector:       pipeSelector,
 		attachedConnectors: make(map[socket.Connector]struct{}),
 		closed:             false,
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
-		sendq:              make(chan *socket.Message, defaultSendQueueSize),
 	}
 }
 
 func (s *sender) AttachConnector(connector socket.Connector) {
+	// OptionSendQueueSize useless after first attach
+	s.sendq = make(chan *socket.Message, OptionSendQueueSize.Value(s.GetOptionDefault(OptionSendQueueSize, defaultSendQueueSize)))
+
 	s.Lock()
 	defer s.Unlock()
 
@@ -76,10 +129,42 @@ func (s *sender) addPipe(pipe socket.Pipe) {
 func (s *sender) remPipe(id uint32) {
 	s.Lock()
 	defer s.Unlock()
-	delete(s.pipes, id)
+	p, ok := s.pipes[id]
+	if ok {
+		delete(s.pipes, id)
+		// async close pipe, avoid dead lock the sender.
+		go s.closePipe(p)
+	}
+}
+
+func (s *sender) closePipe(p *pipe) {
+	select {
+	case <-p.closedq:
+	default:
+		close(p.closedq)
+	DROPING_MSGS_LOOP:
+		for {
+			select {
+			case msg := <-p.sendq:
+				if s.sendType == SendOne {
+					// only resend when send one
+					if msg.Source == nil || msg.Header.Hops > 0 {
+						// re send, initiative/forward send msgs.
+						s.SendMsg(msg)
+					}
+				}
+			default:
+				break DROPING_MSGS_LOOP
+			}
+		}
+	}
 }
 
 func (s *sender) run(p *pipe) {
+	log.WithField("domain", "sender").
+		WithFields(log.Fields{"id": p.p.ID()}).
+		Debug("pipe start run")
+
 	var (
 		err error
 		msg *socket.Message
@@ -89,6 +174,8 @@ SENDING:
 	for {
 		select {
 		case <-s.closedq:
+			break SENDING
+		case <-p.closedq:
 			break SENDING
 		case msg = <-s.sendq:
 		case msg = <-p.sendq:
@@ -103,6 +190,9 @@ SENDING:
 		}
 	}
 	s.remPipe(p.p.ID())
+	log.WithField("domain", "sender").
+		WithFields(log.Fields{"id": p.p.ID()}).
+		Debug("pipe stopped run")
 }
 
 func (s *sender) newMsg(src socket.MsgSource, content []byte) (msg *socket.Message) {
@@ -130,20 +220,41 @@ func (s *sender) SendTo(src socket.MsgSource, content []byte) (err error) {
 		return
 	}
 
-	p.sendq <- s.newMsg(src, content)
+	return p.pushMsg(s.newMsg(src, content))
+}
 
-	return
+func pushMsgToPipes(msg *socket.Message, pipes []*pipe) {
+	for _, p := range pipes {
+		p.pushMsg(msg)
+	}
 }
 
 func (s *sender) SendMsg(msg *socket.Message) (err error) {
-	// send to one
-	// FIXME: 0, 1, n, N
-	s.sendq <- msg
+	switch s.sendType {
+	case SendOne:
+		// TODO: add send timeout
+		s.sendq <- msg
+	case SendAll:
+		s.Lock()
+		pipes := make([]*pipe, len(s.pipes))
+		i := 0
+		for _, p := range s.pipes {
+			pipes[i] = p
+			i++
+		}
+		s.Unlock()
+		go pushMsgToPipes(msg, pipes)
+	case SendSome:
+		s.Lock()
+		pipes := s.pipeSelector.Select(s.pipes)
+		s.Unlock()
+		go pushMsgToPipes(msg, pipes)
+	}
 
 	return
 }
 
-func (s *sender) Send(content []byte) error {
+func (s *sender) Send(content []byte) (err error) {
 	return s.SendMsg(s.newMsg(nil, content))
 }
 

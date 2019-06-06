@@ -7,10 +7,12 @@ import (
 type optionName int
 
 const (
-	optionNameTTL = iota
+	optionNameTTL optionName = iota
+	optionNameSendQueueSize
 )
 
 // Options
 var (
-	OptionTTL = options.NewUint8Option(optionNameTTL)
+	OptionTTL           = options.NewUint8Option(optionNameTTL)
+	OptionSendQueueSize = options.NewUint16Option(optionNameSendQueueSize)
 )
