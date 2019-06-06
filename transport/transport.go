@@ -11,8 +11,6 @@ import (
 
 // Connection is connection between peers.
 type Connection interface {
-	options.Options
-
 	Send(...[]byte) error
 	Recv() ([]byte, error)
 	Close() error

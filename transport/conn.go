@@ -13,8 +13,6 @@ import (
 
 // connection implements the Connection interface on top of net.Conn.
 type connection struct {
-	options.Options
-
 	scheme string
 	c      net.Conn
 	maxrx  int
@@ -95,7 +93,6 @@ func NewConnection(scheme string, c net.Conn, opts options.Options) (Connection,
 	conn := &connection{
 		scheme: scheme,
 		c:      c,
-		maxrx:  0,
 	}
 
 	if val, ok := opts.GetOption(OptionMaxRecvSize); ok {
