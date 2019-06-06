@@ -15,10 +15,11 @@ type (
 		ListenOptions(addr string, opts multisocket.Options) error
 		NewListener(addr string, opts multisocket.Options) (Listener, error)
 
-		Send([]byte) (PipeInfo, error)
-		SendTo(PipeInfo, []byte) error
-		Recv() (PipeInfo, []byte, error)
-		RecvFrom(PipeInfo) ([]byte, error)
+		SendTo(src MsgSource, content []byte) error
+		SendMsg(msg *Message) error
+		Send([]byte) error
+		RecvMsg() (*Message, error)
+		Recv() ([]byte, error)
 
 		Close() error
 	}
@@ -41,21 +42,30 @@ type (
 )
 
 type (
-	// PipeInfo is pipe info
-	PipeInfo interface {
+	// Pipe is pipe
+	Pipe interface {
 		ID() uint32
 		LocalAddress() string
 		RemoteAddress() string
-	}
 
-	// Pipe is pipe
-	Pipe interface {
-		PipeInfo
-		Send([]byte) error
+		Send(msgs ...[]byte) error
 		Recv() ([]byte, error)
+
 		Close() error
 	}
 )
+
+// PipeEvent is pipe event
+type PipeEvent int
+
+// pipe events
+const (
+	PipeEventAdd PipeEvent = iota
+	PipeEventRemove
+)
+
+// PipeEventHook is pipe event hook
+type PipeEventHook func(PipeEvent, Pipe)
 
 type (
 	// Connector controls socket's connections
@@ -68,18 +78,19 @@ type (
 		ListenOptions(addr string, opts multisocket.Options) error
 		NewListener(addr string, opts multisocket.Options) (Listener, error)
 
-		Close() error
+		Close()
 
-		AddPipeChannel(chan<- Pipe)
-		RemovePipeChannel(chan<- Pipe)
+		RegisterPipeEventHook(PipeEventHook)
+		UnregisterPipeEventHook(PipeEventHook)
 	}
 
 	// Sender controls socket's send.
 	Sender interface {
 		AttachConnector(Connector)
 
-		Send([]byte) (PipeInfo, error)
-		SendTo(PipeInfo, []byte) error
+		SendTo(src MsgSource, content []byte) error
+		SendMsg(msg *Message) error
+		Send(content []byte) error
 
 		Close()
 	}
@@ -88,8 +99,8 @@ type (
 	Receiver interface {
 		AttachConnector(Connector)
 
-		Recv() (PipeInfo, []byte, error)
-		RecvFrom(PipeInfo) ([]byte, error)
+		RecvMsg() (*Message, error)
+		Recv() ([]byte, error)
 
 		Close()
 	}

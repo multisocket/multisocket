@@ -51,20 +51,24 @@ func (s *socket) NewListener(addr string, opts multisocket.Options) (Listener, e
 	return s.connector.NewListener(addr, opts)
 }
 
-func (s *socket) Send(msg []byte) (PipeInfo, error) {
-	return s.sender.Send(msg)
+func (s *socket) SendTo(src MsgSource, content []byte) error {
+	return s.sender.SendTo(src, content)
 }
 
-func (s *socket) SendTo(connInfo PipeInfo, msg []byte) error {
-	return s.sender.SendTo(connInfo, msg)
+func (s *socket) SendMsg(msg *Message) error {
+	return s.sender.SendMsg(msg)
 }
 
-func (s *socket) Recv() (PipeInfo, []byte, error) {
+func (s *socket) Send(content []byte) error {
+	return s.sender.Send(content)
+}
+
+func (s *socket) RecvMsg() (*Message, error) {
+	return s.receiver.RecvMsg()
+}
+
+func (s *socket) Recv() ([]byte, error) {
 	return s.receiver.Recv()
-}
-
-func (s *socket) RecvFrom(connInfo PipeInfo) ([]byte, error) {
-	return s.receiver.RecvFrom(connInfo)
 }
 
 func (s *socket) Close() error {
