@@ -1,4 +1,4 @@
-package socket
+package sender
 
 import (
 	"github.com/webee/multisocket/options"
@@ -12,5 +12,5 @@ const (
 
 // Options
 var (
-	OptionTTL = options.NewIntOption(optionNameTTL)
+	OptionTTL = options.NewUint8Option(optionNameTTL)
 )

@@ -28,6 +28,18 @@ func New(connector Connector, sender Sender, receiver Receiver) Socket {
 	}
 }
 
+func (s *socket) Connector() Connector {
+	return s.connector
+}
+
+func (s *socket) Sender() Sender {
+	return s.sender
+}
+
+func (s *socket) Receiver() Receiver {
+	return s.receiver
+}
+
 func (s *socket) Dial(addr string) error {
 	return s.connector.Dial(addr)
 }

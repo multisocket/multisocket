@@ -3,11 +3,14 @@ package receiver
 import (
 	"sync"
 
+	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/socket"
 )
 
 type (
 	receiver struct {
+		options.Options
+
 		sync.Mutex
 		attachedConnectors map[socket.Connector]struct{}
 		closed             bool
@@ -60,6 +63,7 @@ func (p *pipe) recvMsg() (msg *socket.Message, err error) {
 // New create a receiver
 func New() socket.Receiver {
 	return &receiver{
+		Options:            options.NewOptions(),
 		attachedConnectors: make(map[socket.Connector]struct{}),
 		closed:             false,
 		closedq:            make(chan struct{}),
@@ -109,10 +113,6 @@ RECVING:
 	for {
 		if msg, err = p.recvMsg(); err != nil {
 			break
-		}
-		if msg.Header.TTL <= 0 {
-			// drop msg
-			continue
 		}
 		select {
 		case <-r.closedq:

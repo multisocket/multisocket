@@ -3,22 +3,25 @@ package sender
 import (
 	"sync"
 
+	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/socket"
 )
 
 type (
 	sender struct {
+		options.Options
+
 		sync.Mutex
 		attachedConnectors map[socket.Connector]struct{}
 		closed             bool
 		closedq            chan struct{}
 		pipes              map[uint32]*pipe
-		sendq              chan [][]byte
+		sendq              chan *socket.Message
 	}
 
 	pipe struct {
 		p     socket.Pipe
-		sendq chan [][]byte
+		sendq chan *socket.Message
 	}
 )
 
@@ -29,18 +32,19 @@ const (
 func newPipe(p socket.Pipe) *pipe {
 	return &pipe{
 		p:     p,
-		sendq: make(chan [][]byte, defaultSendQueueSize),
+		sendq: make(chan *socket.Message, defaultSendQueueSize),
 	}
 }
 
 // New create a sender
 func New() socket.Sender {
 	return &sender{
+		Options:            options.NewOptions(),
 		attachedConnectors: make(map[socket.Connector]struct{}),
 		closed:             false,
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
-		sendq:              make(chan [][]byte, defaultSendQueueSize),
+		sendq:              make(chan *socket.Message, defaultSendQueueSize),
 	}
 }
 
@@ -77,8 +81,8 @@ func (s *sender) remPipe(id uint32) {
 
 func (s *sender) run(p *pipe) {
 	var (
-		err  error
-		msgs [][]byte
+		err error
+		msg *socket.Message
 	)
 
 SENDING:
@@ -86,14 +90,27 @@ SENDING:
 		select {
 		case <-s.closedq:
 			break SENDING
-		case msgs = <-s.sendq:
-		case msgs = <-p.sendq:
+		case msg = <-s.sendq:
+		case msg = <-p.sendq:
 		}
-		if err = p.p.Send(msgs...); err != nil {
+		if msg.Header.TTL == 0 {
+			// drop msg
+			continue
+		}
+
+		if err = p.p.Send(msg.Header.Encode(), msg.Source.Encode(), msg.Content); err != nil {
 			break SENDING
 		}
 	}
 	s.remPipe(p.p.ID())
+}
+
+func (s *sender) newMsg(src socket.MsgSource, content []byte) (msg *socket.Message) {
+	msg = socket.NewMessage(src, content)
+	if val, ok := s.GetOption(OptionTTL); ok {
+		msg.Header.TTL = OptionTTL.Value(val)
+	}
+	return
 }
 
 func (s *sender) SendTo(src socket.MsgSource, content []byte) (err error) {
@@ -113,8 +130,7 @@ func (s *sender) SendTo(src socket.MsgSource, content []byte) (err error) {
 		return
 	}
 
-	msg := socket.NewMessage(src, content)
-	p.sendq <- [][]byte{msg.Header.Encode(), msg.Source.Encode(), msg.Content}
+	p.sendq <- s.newMsg(src, content)
 
 	return
 }
@@ -122,14 +138,13 @@ func (s *sender) SendTo(src socket.MsgSource, content []byte) (err error) {
 func (s *sender) SendMsg(msg *socket.Message) (err error) {
 	// send to one
 	// FIXME: 0, 1, n, N
-	msgs := [][]byte{msg.Header.Encode(), msg.Source.Encode(), msg.Content}
-	s.sendq <- msgs
+	s.sendq <- msg
 
 	return
 }
 
 func (s *sender) Send(content []byte) error {
-	return s.SendMsg(socket.NewMessage(nil, content))
+	return s.SendMsg(s.newMsg(nil, content))
 }
 
 func (s *sender) Close() {
