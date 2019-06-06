@@ -60,16 +60,18 @@ func newDialer(parent *connector, td transport.Dialer) *dialer {
 
 func (d *dialer) Dial() error {
 	d.Lock()
-	defer d.Unlock()
 	if d.active {
+		d.Unlock()
 		return multisocket.ErrAddrInUse
 	}
 	if d.closed {
+		d.Unlock()
 		return multisocket.ErrClosed
 	}
 
 	d.active = true
 	d.reconnTime = DialerOptionMinReconnectTime.Value(d.GetOptionDefault(DialerOptionMinReconnectTime, defaultMinReconnTime))
+	d.Unlock()
 	async := DialerOptionDialAsync.Value(d.GetOptionDefault(DialerOptionDialAsync, false))
 	if async {
 		go d.redial()

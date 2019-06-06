@@ -96,8 +96,9 @@ func (p *pipe) Close() error {
 	return nil
 }
 
-func (p *pipe) Send(msg []byte) (err error) {
-	if err = p.c.Send(msg); err != nil {
+func (p *pipe) Send(msgs ...[]byte) (err error) {
+	if err = p.c.Send(msgs...); err != nil {
+		// NOTE: close on any error
 		go p.Close()
 	}
 	return
@@ -105,7 +106,9 @@ func (p *pipe) Send(msg []byte) (err error) {
 
 func (p *pipe) Recv() (msg []byte, err error) {
 	if msg, err = p.c.Recv(); err != nil {
+		// NOTE: close on any error
 		go p.Close()
 	}
+
 	return
 }

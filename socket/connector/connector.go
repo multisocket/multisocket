@@ -1,7 +1,7 @@
 package connector
 
 import (
-	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/webee/multisocket"
@@ -9,16 +9,18 @@ import (
 	"github.com/webee/multisocket/transport"
 )
 
-type connector struct {
-	limit int
+type (
+	connector struct {
+		limit int
 
-	sync.Mutex
-	dialers      []*dialer
-	listeners    []*listener
-	pipes        map[*pipe]struct{}
-	pipeChannels map[chan<- socket.Pipe]struct{}
-	closed       bool
-}
+		sync.Mutex
+		dialers        []*dialer
+		listeners      []*listener
+		pipes          map[*pipe]struct{}
+		pipeEventHooks map[uintptr]socket.PipeEventHook
+		closed         bool
+	}
+)
 
 const (
 	// defaultMaxRxSize is the default maximum Rx size
@@ -33,11 +35,11 @@ func New() socket.Connector {
 // NewWithLimit create a Connector with limited connections.
 func NewWithLimit(n int) socket.Connector {
 	c := &connector{
-		limit:        n,
-		dialers:      make([]*dialer, 0),
-		listeners:    make([]*listener, 0),
-		pipes:        make(map[*pipe]struct{}),
-		pipeChannels: make(map[chan<- socket.Pipe]struct{}),
+		limit:          n,
+		dialers:        make([]*dialer, 0),
+		listeners:      make([]*listener, 0),
+		pipes:          make(map[*pipe]struct{}),
+		pipeEventHooks: make(map[uintptr]socket.PipeEventHook),
 	}
 
 	return c
@@ -47,10 +49,9 @@ func (c *connector) addPipe(p *pipe) {
 	c.Lock()
 	defer c.Unlock()
 	if c.limit == -1 || c.limit > len(c.pipes) {
-		fmt.Printf("add %d, %d/%d\n", p.ID(), len(c.pipes), c.limit)
 		c.pipes[p] = struct{}{}
-		for channel := range c.pipeChannels {
-			channel <- p
+		for _, hook := range c.pipeEventHooks {
+			go hook(socket.PipeEventAdd, p)
 		}
 	} else {
 		go p.Close()
@@ -70,7 +71,6 @@ func (c *connector) addPipe(p *pipe) {
 }
 
 func (c *connector) remPipe(p *pipe) {
-	fmt.Printf("rem %d, %d/%d\n", p.ID(), len(c.pipes), c.limit)
 	c.Lock()
 	delete(c.pipes, p)
 	c.Unlock()
@@ -203,11 +203,11 @@ func (c *connector) NewListener(addr string, opts multisocket.Options) (l socket
 	return
 }
 
-func (c *connector) Close() error {
+func (c *connector) Close() {
 	c.Lock()
 	if c.closed {
 		c.Unlock()
-		return multisocket.ErrClosed
+		return
 	}
 	listeners := c.listeners
 	dialers := c.dialers
@@ -228,18 +228,16 @@ func (c *connector) Close() error {
 	for p := range pipes {
 		p.Close()
 	}
-
-	return nil
 }
 
-func (c *connector) AddPipeChannel(channel chan<- socket.Pipe) {
+func (c *connector) RegisterPipeEventHook(hook socket.PipeEventHook) {
 	c.Lock()
-	c.pipeChannels[channel] = struct{}{}
+	c.pipeEventHooks[reflect.ValueOf(hook).Pointer()] = hook
 	c.Unlock()
 }
 
-func (c *connector) RemovePipeChannel(channel chan<- socket.Pipe) {
+func (c *connector) UnregisterPipeEventHook(hook socket.PipeEventHook) {
 	c.Lock()
-	delete(c.pipeChannels, channel)
+	delete(c.pipeEventHooks, reflect.ValueOf(hook).Pointer())
 	c.Unlock()
 }
