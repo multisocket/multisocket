@@ -5,11 +5,12 @@ import (
 	"time"
 
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
 )
 
 type listener struct {
-	multisocket.Options
+	options.Options
 
 	parent *connector
 	l      transport.Listener
@@ -20,7 +21,7 @@ type listener struct {
 }
 
 func newListener(parent *connector, tl transport.Listener) *listener {
-	opts := multisocket.NewOptionsWithUpDownStreamsAndAccepts(tl, tl)
+	opts := options.NewOptionsWithUpDownStreamsAndAccepts(tl, tl)
 	return &listener{
 		Options: opts,
 		parent:  parent,

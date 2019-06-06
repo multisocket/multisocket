@@ -29,15 +29,15 @@ const (
 	defaultMsgTTL = 16
 )
 
-var (
-	// DefaultHeader is default header when send a message.
-	DefaultHeader = &MsgHeader{TTL: defaultMsgTTL, Hops: 0}
-)
-
 // errors
 var (
 	ErrInvalidData = errors.New("invalid data")
 )
+
+// NewHeader create a message header.
+func NewHeader() *MsgHeader {
+	return &MsgHeader{TTL: defaultMsgTTL, Hops: 0}
+}
 
 // NewHeaderFromBytes create a msg header from bytes.
 func NewHeaderFromBytes(payload []byte) (header *MsgHeader, err error) {
@@ -68,7 +68,7 @@ func (h *MsgHeader) Encode() []byte {
 // NewMessage create a message.
 func NewMessage(src MsgSource, content []byte) *Message {
 	return &Message{
-		Header:  DefaultHeader,
+		Header:  NewHeader(),
 		Source:  src,
 		Content: content,
 	}

@@ -1,4 +1,4 @@
-package multisocket
+package options
 
 import (
 	"errors"
@@ -68,6 +68,16 @@ type (
 	}
 
 	intOption struct {
+		baseOption
+	}
+
+	// UInt8Option is option with uint8 value.
+	UInt8Option interface {
+		Option
+		Value(val interface{}) uint8
+	}
+
+	uint8Option struct {
 		baseOption
 	}
 )
@@ -215,7 +225,7 @@ func (o *boolOption) Validate(val interface{}) error {
 	return nil
 }
 
-// Value get option's value, must ensure option value is not nil
+// Value get option's value, must ensure option value is not empty
 func (o *boolOption) Value(val interface{}) bool {
 	return val.(bool)
 }
@@ -233,7 +243,7 @@ func (o *timeDurationOption) Validate(val interface{}) error {
 	return nil
 }
 
-// Value get option's value, must ensure option value is not nil
+// Value get option's value, must ensure option value is not empty
 func (o *timeDurationOption) Value(val interface{}) time.Duration {
 	return val.(time.Duration)
 }
@@ -251,7 +261,25 @@ func (o *intOption) Validate(val interface{}) error {
 	return nil
 }
 
-// Value get option's value, must ensure option value is not nil
+// Value get option's value, must ensure option value is not empty
 func (o *intOption) Value(val interface{}) int {
 	return val.(int)
+}
+
+// NewUInt8Option create an uint8 option
+func NewUInt8Option(name interface{}) UInt8Option {
+	return &uint8Option{baseOption{name}}
+}
+
+// Validate validate the option value
+func (o *uint8Option) Validate(val interface{}) error {
+	if _, ok := val.(uint8); !ok {
+		return ErrInvalidOptionValue
+	}
+	return nil
+}
+
+// Value get option's value, must ensure option value is not empty
+func (o *uint8Option) Value(val interface{}) uint8 {
+	return val.(uint8)
 }

@@ -6,11 +6,12 @@ import (
 	"sync"
 
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/options"
 )
 
 // Connection is connection between peers.
 type Connection interface {
-	multisocket.Options
+	options.Options
 
 	Send(...[]byte) error
 	Recv() ([]byte, error)
@@ -22,14 +23,14 @@ type Connection interface {
 
 // Dialer is dialer
 type Dialer interface {
-	multisocket.Options
+	options.Options
 
 	Dial() (Connection, error)
 }
 
 // Listener is listener
 type Listener interface {
-	multisocket.Options
+	options.Options
 
 	Listen() error
 	Accept() (Connection, error)

@@ -6,31 +6,18 @@ import (
 	"time"
 
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
-)
-
-type dialerOptionName int
-
-const (
-	dialerOptionNameMinReconnectTime = iota
-	dialerOptionNameMaxReconnectTime
-	dialerOptionNameDialAsync
-)
-
-// Options
-var (
-	DialerOptionMinReconnectTime = multisocket.NewTimeDurationOption(dialerOptionNameMinReconnectTime)
-	DialerOptionMaxReconnectTime = multisocket.NewTimeDurationOption(dialerOptionNameMaxReconnectTime)
-	DialerOptionDialAsync        = multisocket.NewBoolOption(dialerOptionNameDialAsync)
 )
 
 const (
 	defaultMinReconnTime = time.Millisecond * 100
-	defaultMaxReconnTime = time.Second * 30
+	defaultMaxReconnTime = time.Second * 8
+	defaultDialAsync     = false
 )
 
 type dialer struct {
-	multisocket.Options
+	options.Options
 	parent *connector
 	d      transport.Dialer
 
@@ -45,7 +32,7 @@ type dialer struct {
 }
 
 func newDialer(parent *connector, td transport.Dialer) *dialer {
-	opts := multisocket.NewOptionsWithUpDownStreamsAndAccepts(nil, td,
+	opts := options.NewOptionsWithUpDownStreamsAndAccepts(nil, td,
 		DialerOptionMinReconnectTime,
 		DialerOptionMaxReconnectTime,
 		DialerOptionDialAsync).
@@ -72,7 +59,7 @@ func (d *dialer) Dial() error {
 	d.active = true
 	d.reconnTime = DialerOptionMinReconnectTime.Value(d.GetOptionDefault(DialerOptionMinReconnectTime, defaultMinReconnTime))
 	d.Unlock()
-	async := DialerOptionDialAsync.Value(d.GetOptionDefault(DialerOptionDialAsync, false))
+	async := DialerOptionDialAsync.Value(d.GetOptionDefault(DialerOptionDialAsync, defaultDialAsync))
 	if async {
 		go d.redial()
 		return nil

@@ -8,11 +8,12 @@ import (
 	"sync"
 
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/options"
 )
 
 // connection implements the Connection interface on top of net.Conn.
 type connection struct {
-	multisocket.Options
+	options.Options
 
 	scheme string
 	c      net.Conn
@@ -90,7 +91,7 @@ func (conn *connection) RemoteAddress() string {
 }
 
 // NewConnection allocates a new Connection using the supplied net.Conn
-func NewConnection(scheme string, c net.Conn, opts multisocket.Options) (Connection, error) {
+func NewConnection(scheme string, c net.Conn, opts options.Options) (Connection, error) {
 	conn := &connection{
 		scheme: scheme,
 		c:      c,

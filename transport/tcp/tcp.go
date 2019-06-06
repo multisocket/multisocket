@@ -1,25 +1,11 @@
-// Copyright 2018 The Mangos Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use file except in compliance with the License.
-// You may obtain a copy of the license at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Package tcp implements the TCP transport for mangos. To enable it simply
-// import it.
+// Package tcp implements the TCP transport . To enable it simply import it.
 package tcp
 
 import (
 	"net"
 
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
 )
 
@@ -32,7 +18,7 @@ func init() {
 	transport.RegisterTransport(Transport)
 }
 
-func configTCP(conn *net.TCPConn, opts multisocket.Options) error {
+func configTCP(conn *net.TCPConn, opts options.Options) error {
 	if val, ok := opts.GetOption(OptionNoDelay); ok {
 		if err := conn.SetNoDelay(OptionNoDelay.Value(val)); err != nil {
 			return err
@@ -52,7 +38,7 @@ func configTCP(conn *net.TCPConn, opts multisocket.Options) error {
 }
 
 type dialer struct {
-	multisocket.Options
+	options.Options
 
 	addr string
 }
@@ -79,7 +65,7 @@ func (d *dialer) Dial() (_ transport.Connection, err error) {
 }
 
 type listener struct {
-	multisocket.Options
+	options.Options
 
 	addr     *net.TCPAddr
 	bound    net.Addr
@@ -128,9 +114,9 @@ func (t tcpTran) Scheme() string {
 	return "tcp"
 }
 
-func newDefaultOptions() multisocket.Options {
+func newDefaultOptions() options.Options {
 	// default options
-	return multisocket.NewOptions().
+	return options.NewOptions().
 		WithOption(OptionNoDelay, true).
 		WithOption(OptionKeepAlive, true).
 		WithOption(transport.OptionMaxRecvSize, 0)

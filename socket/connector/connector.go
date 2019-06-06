@@ -4,6 +4,10 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/webee/multisocket/options"
+
+	log "github.com/sirupsen/logrus"
+
 	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/socket"
 	"github.com/webee/multisocket/transport"
@@ -46,8 +50,13 @@ func NewWithLimit(n int) socket.Connector {
 }
 
 func (c *connector) addPipe(p *pipe) {
+	log.WithField("domain", "connector").
+		WithFields(log.Fields{"id": p.ID(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
+		Debug("add pipe")
+
 	c.Lock()
 	defer c.Unlock()
+
 	if c.limit == -1 || c.limit > len(c.pipes) {
 		c.pipes[p] = struct{}{}
 		for _, hook := range c.pipeEventHooks {
@@ -71,6 +80,10 @@ func (c *connector) addPipe(p *pipe) {
 }
 
 func (c *connector) remPipe(p *pipe) {
+	log.WithField("domain", "connector").
+		WithFields(log.Fields{"id": p.ID()}).
+		Debug("remove pipe")
+
 	c.Lock()
 	delete(c.pipes, p)
 	c.Unlock()
@@ -97,10 +110,10 @@ func (c *connector) remPipe(p *pipe) {
 }
 
 func (c *connector) Dial(addr string) error {
-	return c.DialOptions(addr, multisocket.NewOptions())
+	return c.DialOptions(addr, options.NewOptions())
 }
 
-func (c *connector) DialOptions(addr string, opts multisocket.Options) error {
+func (c *connector) DialOptions(addr string, opts options.Options) error {
 	d, err := c.NewDialer(addr, opts)
 	if err != nil {
 		return err
@@ -108,7 +121,7 @@ func (c *connector) DialOptions(addr string, opts multisocket.Options) error {
 	return d.Dial()
 }
 
-func (c *connector) NewDialer(addr string, opts multisocket.Options) (d socket.Dialer, err error) {
+func (c *connector) NewDialer(addr string, opts options.Options) (d socket.Dialer, err error) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -149,10 +162,10 @@ func (c *connector) NewDialer(addr string, opts multisocket.Options) (d socket.D
 }
 
 func (c *connector) Listen(addr string) error {
-	return c.ListenOptions(addr, multisocket.NewOptions())
+	return c.ListenOptions(addr, options.NewOptions())
 }
 
-func (c *connector) ListenOptions(addr string, opts multisocket.Options) error {
+func (c *connector) ListenOptions(addr string, opts options.Options) error {
 	l, err := c.NewListener(addr, opts)
 	if err != nil {
 		return err
@@ -160,7 +173,7 @@ func (c *connector) ListenOptions(addr string, opts multisocket.Options) error {
 	return l.Listen()
 }
 
-func (c *connector) NewListener(addr string, opts multisocket.Options) (l socket.Listener, err error) {
+func (c *connector) NewListener(addr string, opts options.Options) (l socket.Listener, err error) {
 	c.Lock()
 	defer c.Unlock()
 

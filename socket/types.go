@@ -1,19 +1,19 @@
 package socket
 
 import (
-	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/options"
 )
 
 type (
 	// Socket is a network peer
 	Socket interface {
 		Dial(addr string) error
-		DialOptions(addr string, opts multisocket.Options) error
-		NewDialer(addr string, opts multisocket.Options) (Dialer, error)
+		DialOptions(addr string, opts options.Options) error
+		NewDialer(addr string, opts options.Options) (Dialer, error)
 
 		Listen(addr string) error
-		ListenOptions(addr string, opts multisocket.Options) error
-		NewListener(addr string, opts multisocket.Options) (Listener, error)
+		ListenOptions(addr string, opts options.Options) error
+		NewListener(addr string, opts options.Options) (Listener, error)
 
 		SendTo(src MsgSource, content []byte) error
 		SendMsg(msg *Message) error
@@ -26,7 +26,7 @@ type (
 
 	// Dialer is dialer
 	Dialer interface {
-		multisocket.Options
+		options.Options
 
 		Dial() error
 		Close() error
@@ -34,7 +34,7 @@ type (
 
 	// Listener is listener
 	Listener interface {
-		multisocket.Options
+		options.Options
 
 		Listen() error
 		Close() error
@@ -71,12 +71,12 @@ type (
 	// Connector controls socket's connections
 	Connector interface {
 		Dial(addr string) error
-		DialOptions(addr string, opts multisocket.Options) error
-		NewDialer(addr string, opts multisocket.Options) (Dialer, error)
+		DialOptions(addr string, opts options.Options) error
+		NewDialer(addr string, opts options.Options) (Dialer, error)
 
 		Listen(addr string) error
-		ListenOptions(addr string, opts multisocket.Options) error
-		NewListener(addr string, opts multisocket.Options) (Listener, error)
+		ListenOptions(addr string, opts options.Options) error
+		NewListener(addr string, opts options.Options) (Listener, error)
 
 		Close()
 

@@ -1,7 +1,7 @@
 package tcp
 
 import (
-	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/options"
 )
 
 type optionName int
@@ -14,7 +14,7 @@ const (
 
 // Options
 var (
-	OptionNoDelay       = multisocket.NewBoolOption(optionNameNoDelay)
-	OptionKeepAlive     = multisocket.NewBoolOption(optionNameKeeyAlive)
-	OptionKeepAliveTime = multisocket.NewTimeDurationOption(optionNameKeepAliveTime)
+	OptionNoDelay       = options.NewBoolOption(optionNameNoDelay)
+	OptionKeepAlive     = options.NewBoolOption(optionNameKeeyAlive)
+	OptionKeepAliveTime = options.NewTimeDurationOption(optionNameKeepAliveTime)
 )

@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/options"
 )
 
 type socket struct {
@@ -31,11 +32,11 @@ func (s *socket) Dial(addr string) error {
 	return s.connector.Dial(addr)
 }
 
-func (s *socket) DialOptions(addr string, opts multisocket.Options) error {
+func (s *socket) DialOptions(addr string, opts options.Options) error {
 	return s.connector.DialOptions(addr, opts)
 }
 
-func (s *socket) NewDialer(addr string, opts multisocket.Options) (Dialer, error) {
+func (s *socket) NewDialer(addr string, opts options.Options) (Dialer, error) {
 	return s.connector.NewDialer(addr, opts)
 }
 
@@ -43,11 +44,11 @@ func (s *socket) Listen(addr string) error {
 	return s.connector.Listen(addr)
 }
 
-func (s *socket) ListenOptions(addr string, opts multisocket.Options) error {
+func (s *socket) ListenOptions(addr string, opts options.Options) error {
 	return s.connector.ListenOptions(addr, opts)
 }
 
-func (s *socket) NewListener(addr string, opts multisocket.Options) (Listener, error) {
+func (s *socket) NewListener(addr string, opts options.Options) (Listener, error) {
 	return s.connector.NewListener(addr, opts)
 }
 

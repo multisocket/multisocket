@@ -1,7 +1,7 @@
 package transport
 
 import (
-	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/options"
 )
 
 type optionName int
@@ -12,5 +12,5 @@ const (
 
 // Options
 var (
-	OptionMaxRecvSize = multisocket.NewIntOption(optionNameMaxRecvSize)
+	OptionMaxRecvSize = options.NewIntOption(optionNameMaxRecvSize)
 )
