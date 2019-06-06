@@ -86,6 +86,9 @@ func (c *connector) remPipe(p *pipe) {
 
 	c.Lock()
 	delete(c.pipes, p)
+	for _, hook := range c.pipeEventHooks {
+		go hook(socket.PipeEventRemove, p)
+	}
 	c.Unlock()
 
 	// If the pipe was from a dialer, inform it so that it can redial.
