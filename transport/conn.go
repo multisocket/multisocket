@@ -47,16 +47,20 @@ func (conn *connection) Recv() ([]byte, error) {
 
 // Send implements the Pipe Send method.  The message is sent as a 64-bit
 // size (network byte order) followed by the message itself.
-func (conn *connection) Send(msg []byte) error {
+func (conn *connection) Send(msgs ...[]byte) error {
 	var buff = net.Buffers{}
 
 	// Serialize the length header
-	l := uint64(len(msg))
+	l := uint64(0)
+	for _, msg := range msgs {
+		l += uint64(len(msg))
+	}
 	lbyte := make([]byte, 8)
 	binary.BigEndian.PutUint64(lbyte, l)
 
 	// Attach the length header along with the actual header and body
-	buff = append(buff, lbyte, msg)
+	buff = append(buff, lbyte)
+	buff = append(buff, msgs...)
 
 	if _, err := buff.WriteTo(conn.c); err != nil {
 		return err

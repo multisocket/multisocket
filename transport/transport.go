@@ -12,7 +12,7 @@ import (
 type Connection interface {
 	multisocket.Options
 
-	Send([]byte) error
+	Send(...[]byte) error
 	Recv() ([]byte, error)
 	Close() error
 
