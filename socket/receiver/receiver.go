@@ -3,6 +3,7 @@ package receiver
 import (
 	"sync"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/socket"
 )
@@ -10,6 +11,8 @@ import (
 type (
 	receiver struct {
 		options.Options
+
+		recvNone bool // no recving
 
 		sync.Mutex
 		attachedConnectors map[socket.Connector]struct{}
@@ -20,16 +23,20 @@ type (
 	}
 
 	pipe struct {
-		p socket.Pipe
+		closedq chan struct{}
+		p       socket.Pipe
 	}
 )
 
 const (
-	defaultRecvQueueSize = 256
+	defaultRecvQueueSize = uint16(8)
 )
 
 func newPipe(p socket.Pipe) *pipe {
-	return &pipe{p}
+	return &pipe{
+		closedq: make(chan struct{}),
+		p:       p,
+	}
 }
 
 func (p *pipe) recvMsg() (msg *socket.Message, err error) {
@@ -60,19 +67,32 @@ func (p *pipe) recvMsg() (msg *socket.Message, err error) {
 	return
 }
 
-// New create a receiver
+// New create a normal receiver.
 func New() socket.Receiver {
+	return newReceiver(false)
+}
+
+// NewRecvNone create an recv none receiver.
+func NewRecvNone() socket.Receiver {
+	return newReceiver(true)
+}
+
+func newReceiver(recvNone bool) socket.Receiver {
 	return &receiver{
 		Options:            options.NewOptions(),
+		recvNone:           recvNone,
 		attachedConnectors: make(map[socket.Connector]struct{}),
 		closed:             false,
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
-		recvq:              make(chan *socket.Message, defaultRecvQueueSize),
 	}
 }
 
 func (r *receiver) AttachConnector(connector socket.Connector) {
+	// OptionRecvQueueSize useless after first attach
+	if !r.recvNone {
+		r.recvq = make(chan *socket.Message, OptionRecvQueueSize.Value(r.GetOptionDefault(OptionRecvQueueSize, defaultRecvQueueSize)))
+	}
 	r.Lock()
 	defer r.Unlock()
 
@@ -100,10 +120,26 @@ func (r *receiver) addPipe(pipe socket.Pipe) {
 func (r *receiver) remPipe(id uint32) {
 	r.Lock()
 	defer r.Unlock()
-	delete(r.pipes, id)
+	p, ok := r.pipes[id]
+	if ok {
+		delete(r.pipes, id)
+		// async close pipe, avoid dead lock the receiver.
+		go r.closePipe(p)
+	}
+}
+
+func (r *receiver) closePipe(p *pipe) {
+	select {
+	case <-p.closedq:
+	default:
+		close(p.closedq)
+	}
 }
 
 func (r *receiver) run(p *pipe) {
+	log.WithField("domain", "receiver").
+		WithFields(log.Fields{"id": p.p.ID()}).
+		Debug("pipe start run")
 	var (
 		err error
 		msg *socket.Message
@@ -114,21 +150,39 @@ RECVING:
 		if msg, err = p.recvMsg(); err != nil {
 			break
 		}
+		if !r.recvNone {
+			r.recvq <- msg
+		}
+		// else drop msg
+
 		select {
 		case <-r.closedq:
 			break RECVING
-		case r.recvq <- msg:
+		case <-p.closedq:
+			break RECVING
+		default:
 		}
 	}
 	r.remPipe(p.p.ID())
+	log.WithField("domain", "receiver").
+		WithFields(log.Fields{"id": p.p.ID()}).
+		Debug("pipe stopped run")
 }
 
 func (r *receiver) RecvMsg() (msg *socket.Message, err error) {
+	if r.recvNone {
+		return
+	}
+
 	msg = <-r.recvq
 	return
 }
 
 func (r *receiver) Recv() (content []byte, err error) {
+	if r.recvNone {
+		return
+	}
+
 	var msg *socket.Message
 	if msg, err = r.RecvMsg(); err != nil {
 		return
