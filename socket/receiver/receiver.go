@@ -49,11 +49,11 @@ func (p *pipe) recvMsg() (msg *socket.Message, err error) {
 		return
 	}
 
-	if header, err = socket.NewHeaderFromBytes(payload); err != nil {
+	if header, err = NewHeaderFromBytes(payload); err != nil {
 		return
 	}
 	headerSize := header.Size()
-	source = socket.NewSourceFromBytes(int(header.Hops), payload[headerSize:])
+	source = NewSourceFromBytes(int(header.Hops), payload[headerSize:])
 	content := payload[headerSize+source.Size():]
 
 	source = source.NewID(p.p.ID())
@@ -69,16 +69,21 @@ func (p *pipe) recvMsg() (msg *socket.Message, err error) {
 
 // New create a normal receiver.
 func New() socket.Receiver {
-	return newReceiver(false)
+	return NewWithOptions()
+}
+
+// NewWithOptions create a normal receiver with options.
+func NewWithOptions(ovs ...*options.OptionValue) socket.Receiver {
+	return newWithOptions(false, ovs...)
 }
 
 // NewRecvNone create an recv none receiver.
 func NewRecvNone() socket.Receiver {
-	return newReceiver(true)
+	return newWithOptions(true)
 }
 
-func newReceiver(recvNone bool) socket.Receiver {
-	return &receiver{
+func newWithOptions(recvNone bool, ovs ...*options.OptionValue) socket.Receiver {
+	r := &receiver{
 		Options:            options.NewOptions(),
 		recvNone:           recvNone,
 		attachedConnectors: make(map[socket.Connector]struct{}),
@@ -86,21 +91,32 @@ func newReceiver(recvNone bool) socket.Receiver {
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
 	}
+	for _, ov := range ovs {
+		r.SetOption(ov.Option, ov.Value)
+	}
+
+	return r
 }
 
 func (r *receiver) AttachConnector(connector socket.Connector) {
-	// OptionRecvQueueSize useless after first attach
-	if !r.recvNone {
-		r.recvq = make(chan *socket.Message, OptionRecvQueueSize.Value(r.GetOptionDefault(OptionRecvQueueSize, defaultRecvQueueSize)))
-	}
 	r.Lock()
 	defer r.Unlock()
 
-	connector.RegisterPipeEventHook(r.handlePipeEvent)
+	// OptionRecvQueueSize useless after first attach
+	if !r.recvNone && r.recvq == nil {
+		r.recvq = make(chan *socket.Message, r.recvQueueSize())
+	}
+
+	connector.RegisterPipeEventHandler(r)
 	r.attachedConnectors[connector] = struct{}{}
 }
 
-func (r *receiver) handlePipeEvent(e socket.PipeEvent, pipe socket.Pipe) {
+// options
+func (r *receiver) recvQueueSize() uint16 {
+	return OptionRecvQueueSize.Value(r.GetOptionDefault(OptionRecvQueueSize, defaultRecvQueueSize))
+}
+
+func (r *receiver) HandlePipeEvent(e socket.PipeEvent, pipe socket.Pipe) {
 	switch e {
 	case socket.PipeEventAdd:
 		r.addPipe(pipe)
@@ -171,6 +187,7 @@ RECVING:
 
 func (r *receiver) RecvMsg() (msg *socket.Message, err error) {
 	if r.recvNone {
+		err = ErrRecvNotAllowd
 		return
 	}
 
@@ -180,6 +197,7 @@ func (r *receiver) RecvMsg() (msg *socket.Message, err error) {
 
 func (r *receiver) Recv() (content []byte, err error) {
 	if r.recvNone {
+		err = ErrRecvNotAllowd
 		return
 	}
 
@@ -201,7 +219,7 @@ func (r *receiver) Close() {
 
 	// unregister
 	for conns := range r.attachedConnectors {
-		conns.UnregisterPipeEventHook(r.handlePipeEvent)
+		conns.UnregisterPipeEventHandler(r)
 		delete(r.attachedConnectors, conns)
 	}
 
