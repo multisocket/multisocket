@@ -7,7 +7,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/options"
 )
 
@@ -34,7 +33,7 @@ func (conn *connection) Recv() ([]byte, error) {
 	}
 
 	if sz < 0 || (conn.maxrx > 0 && sz > int64(conn.maxrx)) {
-		return nil, multisocket.ErrTooLong
+		return nil, ErrMsgTooLong
 	}
 
 	msg = make([]byte, sz)

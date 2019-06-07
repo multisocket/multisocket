@@ -3,8 +3,8 @@ package tcp
 
 import (
 	"net"
+	"sync"
 
-	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
 )
@@ -66,16 +66,15 @@ func (d *dialer) Dial() (_ transport.Connection, err error) {
 
 type listener struct {
 	options.Options
-
+	sync.Mutex
 	addr     *net.TCPAddr
 	bound    net.Addr
 	listener *net.TCPListener
 }
 
 func (l *listener) Accept() (transport.Connection, error) {
-
 	if l.listener == nil {
-		return nil, multisocket.ErrClosed
+		return nil, transport.ErrClosed
 	}
 	conn, err := l.listener.AcceptTCP()
 	if err != nil {

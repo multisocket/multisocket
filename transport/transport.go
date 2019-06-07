@@ -5,7 +5,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/options"
 )
 
@@ -46,7 +45,7 @@ type Transport interface {
 // string.  This is mostly a utility for benefit of transport providers.
 func StripScheme(t Transport, addr string) (string, error) {
 	if !strings.HasPrefix(addr, t.Scheme()+"://") {
-		return addr, multisocket.ErrBadTran
+		return addr, ErrBadTran
 	}
 	return addr[len(t.Scheme()+"://"):], nil
 }
