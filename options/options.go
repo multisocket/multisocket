@@ -8,6 +8,8 @@ import (
 )
 
 type (
+	// OptionChangeHook is called when set an option value.
+	OptionChangeHook func(opt Option, oldVal, newVal interface{})
 	// Options is option set.
 	Options interface {
 		SetOption(opt Option, val interface{}) (err error)
@@ -16,6 +18,7 @@ type (
 		GetOption(opt Option) (val interface{}, ok bool)
 		GetOptionDefault(opt Option, def interface{}) (val interface{})
 		OptionValues() []*OptionValue
+		SetOptionChangeHook(hook OptionChangeHook) Options
 	}
 
 	// Option is an option item.
@@ -32,10 +35,11 @@ type (
 
 	options struct {
 		sync.RWMutex
-		opts       map[Option]interface{}
-		accepts    map[Option]bool
-		upstream   Options
-		downstream Options
+		opts             map[Option]interface{}
+		accepts          map[Option]bool
+		upstream         Options
+		downstream       Options
+		optionChangeHook OptionChangeHook
 	}
 
 	baseOption struct {
@@ -99,6 +103,11 @@ var (
 	ErrUnsupportedOption  = errors.New("unsupported option")
 )
 
+// NewOptionValue create a option value pair.
+func NewOptionValue(opt Option, val interface{}) *OptionValue {
+	return &OptionValue{opt, val}
+}
+
 // NewOptions create an option set.
 func NewOptions() Options {
 	return &options{
@@ -131,6 +140,13 @@ func (opts *options) acceptOption(opt Option) bool {
 	return opts.accepts == nil || opts.accepts[opt]
 }
 
+func (opts *options) SetOptionChangeHook(hook OptionChangeHook) Options {
+	opts.Lock()
+	opts.optionChangeHook = hook
+	opts.Unlock()
+	return opts
+}
+
 // SetOption add an option value.
 func (opts *options) SetOption(opt Option, val interface{}) (err error) {
 	if val, err = opt.Validate(val); err != nil {
@@ -149,8 +165,17 @@ func (opts *options) SetOption(opt Option, val interface{}) (err error) {
 	opts.Lock()
 	defer opts.Unlock()
 
-	opts.opts[opt] = val
+	opts.doSetOption(opt, val)
 	return
+}
+
+// doSetOption used by other setting functions.
+func (opts *options) doSetOption(opt Option, val interface{}) {
+	oldVal := opts.opts[opt]
+	opts.opts[opt] = val
+	if opts.optionChangeHook != nil {
+		opts.optionChangeHook(opt, oldVal, val)
+	}
 }
 
 // WithOption set an option value.
@@ -177,7 +202,7 @@ func (opts *options) SetOptionIfNotExists(opt Option, val interface{}) (err erro
 	defer opts.Unlock()
 
 	if _, ok := opts.opts[opt]; !ok {
-		opts.opts[opt] = val
+		opts.doSetOption(opt, val)
 	}
 	return
 }
