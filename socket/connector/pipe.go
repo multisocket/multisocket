@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/transport"
 )
 
@@ -100,6 +101,7 @@ func (p *pipe) Send(msgs ...[]byte) (err error) {
 	if err = p.c.Send(msgs...); err != nil {
 		// NOTE: close on any error
 		go p.Close()
+		err = multisocket.ErrClosed
 	}
 	return
 }
@@ -108,6 +110,7 @@ func (p *pipe) Recv() (msg []byte, err error) {
 	if msg, err = p.c.Recv(); err != nil {
 		// NOTE: close on any error
 		go p.Close()
+		err = multisocket.ErrClosed
 	}
 
 	return

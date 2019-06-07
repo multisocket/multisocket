@@ -1,7 +1,6 @@
 package connector
 
 import (
-	"reflect"
 	"sync"
 
 	"github.com/webee/multisocket/options"
@@ -15,60 +14,102 @@ import (
 
 type (
 	connector struct {
-		limit int
-
+		options.Options
 		sync.Mutex
-		dialers        []*dialer
-		listeners      []*listener
-		pipes          map[*pipe]struct{}
-		pipeEventHooks map[uintptr]socket.PipeEventHook
-		closed         bool
+		limit             int
+		dialers           []*dialer
+		listeners         []*listener
+		pipes             map[*pipe]struct{}
+		pipeEventHandlers map[socket.PipeEventHandler]struct{}
+		closed            bool
 	}
 )
 
 const (
 	// defaultMaxRxSize is the default maximum Rx size
 	defaultMaxRxSize = 1024 * 1024
+	// -1 no limit
+	defaultConnLimit = -1
 )
 
 // New create a any Connector
 func New() socket.Connector {
-	return NewWithLimit(-1)
+	return NewWithLimitAndOptions(defaultConnLimit)
 }
 
-// NewWithLimit create a Connector with limited connections.
-func NewWithLimit(n int) socket.Connector {
-	c := &connector{
-		limit:          n,
-		dialers:        make([]*dialer, 0),
-		listeners:      make([]*listener, 0),
-		pipes:          make(map[*pipe]struct{}),
-		pipeEventHooks: make(map[uintptr]socket.PipeEventHook),
-	}
+// NewWithOptions create a Connector with options
+func NewWithOptions(ovs ...*options.OptionValue) socket.Connector {
+	return NewWithLimitAndOptions(defaultConnLimit, ovs...)
+}
 
+// NewWithLimitAndOptions create a Connector with limit and options
+func NewWithLimitAndOptions(limit int, ovs ...*options.OptionValue) socket.Connector {
+	c := &connector{
+		limit:             limit,
+		dialers:           make([]*dialer, 0),
+		listeners:         make([]*listener, 0),
+		pipes:             make(map[*pipe]struct{}),
+		pipeEventHandlers: make(map[socket.PipeEventHandler]struct{}),
+	}
+	c.Options = options.NewOptionsWithAccepts(OptionConnLimit).SetOptionChangeHook(c.onOptionChange)
+	for _, ov := range ovs {
+		c.SetOption(ov.Option, ov.Value)
+	}
+	log.WithField("domain", "connector").
+		WithField("limit", c.limit).
+		Debug("create")
 	return c
 }
 
-func (c *connector) addPipe(p *pipe) {
-	log.WithField("domain", "connector").
-		WithFields(log.Fields{"id": p.ID(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
-		Debug("add pipe")
-
-	c.Lock()
-	defer c.Unlock()
-
-	if c.limit == -1 || c.limit > len(c.pipes) {
-		c.pipes[p] = struct{}{}
-		for _, hook := range c.pipeEventHooks {
-			go hook(socket.PipeEventAdd, p)
-		}
-	} else {
-		go p.Close()
+func (c *connector) onOptionChange(opt options.Option, oldVal, newVal interface{}) {
+	switch opt {
+	case OptionConnLimit:
+		c.Lock()
+		oldLimit := c.limit
+		c.limit = OptionConnLimit.Value(newVal)
+		log.WithField("domain", "connector").
+			WithField("oldLimit", oldLimit).
+			WithField("newLimit", c.limit).
+			Debug("change limit")
+		c.checkLimit(true)
+		c.Unlock()
 	}
+}
 
-	// check exceed limit
-	if c.limit != -1 && c.limit <= len(c.pipes) {
-		// stop connect
+// used by other functions, must get lock first
+func (c *connector) checkLimit(checkNoLimit bool) {
+	if checkNoLimit && c.limit == -1 {
+		// start connecting
+		for _, l := range c.listeners {
+			l.start()
+		}
+
+		for _, d := range c.dialers {
+			d.start()
+		}
+		log.WithField("domain", "connector").
+			WithField("limit", c.limit).
+			WithField("pipes", len(c.pipes)).
+			WithField("action", "start").
+			Debug("check limit")
+	} else if c.limit != -1 && c.limit > len(c.pipes) {
+		// below limit
+		// start connecting
+		for _, l := range c.listeners {
+			l.start()
+		}
+
+		for _, d := range c.dialers {
+			d.start()
+		}
+		log.WithField("domain", "connector").
+			WithField("limit", c.limit).
+			WithField("pipes", len(c.pipes)).
+			WithField("action", "start").
+			Debug("check limit")
+	} else if c.limit != -1 && c.limit <= len(c.pipes) {
+		// check exceed limit
+		// stop connecting
 		for _, l := range c.listeners {
 			l.stop()
 		}
@@ -76,20 +117,53 @@ func (c *connector) addPipe(p *pipe) {
 		for _, d := range c.dialers {
 			d.stop()
 		}
+		log.WithField("domain", "connector").
+			WithField("limit", c.limit).
+			WithField("pipes", len(c.pipes)).
+			WithField("action", "stop").
+			Debug("check limit")
+	}
+}
+
+func (c *connector) addPipe(p *pipe) {
+	c.Lock()
+	defer c.Unlock()
+
+	if c.limit == -1 || c.limit > len(c.pipes) {
+		log.WithField("domain", "connector").
+			WithFields(log.Fields{"id": p.ID(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
+			WithField("limit", c.limit).
+			WithField("pipes", len(c.pipes)).
+			Debug("add pipe")
+
+		c.pipes[p] = struct{}{}
+		for peh := range c.pipeEventHandlers {
+			go peh.HandlePipeEvent(socket.PipeEventAdd, p)
+		}
+
+		c.checkLimit(false)
+	} else {
+		log.WithField("domain", "connector").
+			WithFields(log.Fields{"id": p.ID(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
+			WithField("limit", c.limit).
+			WithField("pipes", len(c.pipes)).
+			Debug("drop pipe")
+
+		go p.Close()
 	}
 }
 
 func (c *connector) remPipe(p *pipe) {
+	c.Lock()
+	delete(c.pipes, p)
+	for peh := range c.pipeEventHandlers {
+		go peh.HandlePipeEvent(socket.PipeEventRemove, p)
+	}
+	c.Unlock()
+
 	log.WithField("domain", "connector").
 		WithFields(log.Fields{"id": p.ID()}).
 		Debug("remove pipe")
-
-	c.Lock()
-	delete(c.pipes, p)
-	for _, hook := range c.pipeEventHooks {
-		go hook(socket.PipeEventRemove, p)
-	}
-	c.Unlock()
 
 	// If the pipe was from a dialer, inform it so that it can redial.
 	if d := p.d; d != nil {
@@ -98,18 +172,7 @@ func (c *connector) remPipe(p *pipe) {
 
 	c.Lock()
 	defer c.Unlock()
-	if c.limit != -1 && c.limit > len(c.pipes) {
-		// below limit
-
-		// start connect
-		for _, l := range c.listeners {
-			l.start()
-		}
-
-		for _, d := range c.dialers {
-			d.start()
-		}
-	}
+	c.checkLimit(false)
 }
 
 func (c *connector) Dial(addr string) error {
@@ -246,14 +309,14 @@ func (c *connector) Close() {
 	}
 }
 
-func (c *connector) RegisterPipeEventHook(hook socket.PipeEventHook) {
+func (c *connector) RegisterPipeEventHandler(handler socket.PipeEventHandler) {
 	c.Lock()
-	c.pipeEventHooks[reflect.ValueOf(hook).Pointer()] = hook
+	c.pipeEventHandlers[handler] = struct{}{}
 	c.Unlock()
 }
 
-func (c *connector) UnregisterPipeEventHook(hook socket.PipeEventHook) {
+func (c *connector) UnregisterPipeEventHandler(handler socket.PipeEventHandler) {
 	c.Lock()
-	delete(c.pipeEventHooks, reflect.ValueOf(hook).Pointer())
+	delete(c.pipeEventHandlers, handler)
 	c.Unlock()
 }
