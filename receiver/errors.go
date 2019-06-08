@@ -13,7 +13,7 @@ func (e err) Error() string {
 // errors
 const (
 	ErrClosed          = multisocket.ErrClosed
+	ErrTimeout         = multisocket.ErrTimeout
 	ErrRecvInvalidData = err("recv invalid data")
 	ErrRecvNotAllowd   = err("recv is not allowd")
-	ErrRecvTimeout     = err("recv time out")
 )

@@ -169,20 +169,25 @@ func (s *sender) closePipe(p *pipe) {
 	case <-p.closedq:
 	default:
 		close(p.closedq)
-	DROPING_MSGS_LOOP:
+	DROP_MSG_LOOP:
 		for {
 			select {
-			case msg := <-p.sendq:
-				if s.sendType == SendOne {
-					// only resend when send one
-					if msg.Source == nil || msg.Header.Hops > 0 {
-						// re send, initiative/forward send msgs.
-						s.SendMsg(msg)
-					}
-				}
+			case <-p.sendq:
+				// send some/all msgs, just drop
+				// TODO: maybe free msg bytes.
 			default:
-				break DROPING_MSGS_LOOP
+				break DROP_MSG_LOOP
 			}
+		}
+	}
+}
+
+func (s *sender) resendMsg(msg *multisocket.Message) {
+	if s.sendType == SendOne {
+		// only resend when send one
+		if msg.Source == nil || msg.Header.Hops > 0 {
+			// re send, initiative/forward send msgs.
+			s.SendMsg(msg)
 		}
 	}
 }
@@ -213,6 +218,7 @@ SENDING:
 		}
 
 		if err = p.p.Send(msg.Header.Encode(), msg.Source.Encode(), msg.Content); err != nil {
+			s.resendMsg(msg)
 			break SENDING
 		}
 	}
