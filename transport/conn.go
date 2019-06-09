@@ -12,49 +12,53 @@ import (
 
 // connection implements the Connection interface on top of net.Conn.
 type connection struct {
-	scheme string
-	c      net.Conn
-	maxrx  int
+	transport Transport
+	c         net.Conn
+	maxrx     uint32
 
 	sync.Mutex
 	closed bool
 }
 
-// Recv implements the TranPipe Recv method.  The message received is expected
-// as a 64-bit size (network byte order) followed by the message itself.
-func (conn *connection) Recv() ([]byte, error) {
+func (conn *connection) Transport() Transport {
+	return conn.transport
+}
 
-	var sz int64
-	var err error
-	var msg []byte
+// Recv implements the TranPipe Recv method.  The message received is expected
+// as a 32-bit size (network byte order) followed by the message itself.
+func (conn *connection) Recv() (msg []byte, err error) {
+	var sz uint32
 
 	if err = binary.Read(conn.c, binary.BigEndian, &sz); err != nil {
-		return nil, err
+		return
 	}
 
-	if sz < 0 || (conn.maxrx > 0 && sz > int64(conn.maxrx)) {
-		return nil, ErrMsgTooLong
+	if conn.maxrx > 0 && sz > conn.maxrx {
+		err = ErrMsgTooLong
+		return
 	}
 
 	msg = make([]byte, sz)
 	if _, err = io.ReadFull(conn.c, msg); err != nil {
-		return nil, err
+		return
 	}
-	return msg, nil
+	return
 }
 
-// Send implements the Pipe Send method.  The message is sent as a 64-bit
+// Send implements the Pipe Send method.  The message is sent as a 32-bit
 // size (network byte order) followed by the message itself.
-func (conn *connection) Send(msgs ...[]byte) error {
-	var buff = net.Buffers{}
+func (conn *connection) Send(msgs ...[]byte) (err error) {
+	var (
+		buff = net.Buffers{}
+		sz   uint32
+	)
 
 	// Serialize the length header
-	l := uint64(0)
 	for _, msg := range msgs {
-		l += uint64(len(msg))
+		sz += uint32(len(msg))
 	}
-	lbyte := make([]byte, 8)
-	binary.BigEndian.PutUint64(lbyte, l)
+	lbyte := make([]byte, 4)
+	binary.BigEndian.PutUint32(lbyte, sz)
 
 	// Attach the length header along with the actual header and body
 	buff = append(buff, lbyte)
@@ -80,22 +84,22 @@ func (conn *connection) Close() error {
 }
 
 func (conn *connection) LocalAddress() string {
-	return fmt.Sprintf("%s://%s", conn.scheme, conn.c.LocalAddr().String())
+	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.c.LocalAddr().String())
 }
 
 func (conn *connection) RemoteAddress() string {
-	return fmt.Sprintf("%s://%s", conn.scheme, conn.c.RemoteAddr().String())
+	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.c.RemoteAddr().String())
 }
 
 // NewConnection allocates a new Connection using the supplied net.Conn
-func NewConnection(scheme string, c net.Conn, opts options.Options) (Connection, error) {
+func NewConnection(transport Transport, c net.Conn, opts options.Options) (Connection, error) {
 	conn := &connection{
-		scheme: scheme,
-		c:      c,
+		transport: transport,
+		c:         c,
 	}
 
-	if val, ok := opts.GetOption(OptionMaxRecvSize); ok {
-		conn.maxrx = OptionMaxRecvSize.Value(val)
+	if val, ok := opts.GetOption(OptionMaxRecvMsgSize); ok {
+		conn.maxrx = OptionMaxRecvMsgSize.Value(val)
 	}
 
 	return conn, nil
