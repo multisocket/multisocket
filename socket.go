@@ -43,8 +43,12 @@ func (s *socket) attachConnector() {
 		s.Unlock()
 		return
 	}
-	s.sender.AttachConnector(s.connector)
-	s.receiver.AttachConnector(s.connector)
+	if s.sender != nil {
+		s.sender.AttachConnector(s.connector)
+	}
+	if s.receiver != nil {
+		s.receiver.AttachConnector(s.connector)
+	}
 	s.attached = true
 }
 
@@ -79,22 +83,42 @@ func (s *socket) NewListener(addr string, opts options.Options) (Listener, error
 }
 
 func (s *socket) SendTo(dest MsgPath, content []byte) error {
+	if s.sender == nil {
+		return ErrOperationNotSupported
+	}
+
 	return s.sender.SendTo(dest, content)
 }
 
 func (s *socket) Send(content []byte) error {
+	if s.sender == nil {
+		return ErrOperationNotSupported
+	}
+
 	return s.sender.Send(content)
 }
 
 func (s *socket) ForwardMsg(msg *Message) error {
+	if s.sender == nil {
+		return ErrOperationNotSupported
+	}
+
 	return s.sender.ForwardMsg(msg)
 }
 
 func (s *socket) RecvMsg() (*Message, error) {
+	if s.receiver == nil {
+		return nil, ErrOperationNotSupported
+	}
+
 	return s.receiver.RecvMsg()
 }
 
 func (s *socket) Recv() ([]byte, error) {
+	if s.receiver == nil {
+		return nil, ErrOperationNotSupported
+	}
+
 	return s.receiver.Recv()
 }
 
@@ -108,8 +132,12 @@ func (s *socket) Close() error {
 	s.Unlock()
 
 	s.connector.Close()
-	s.sender.Close()
-	s.receiver.Close()
+	if s.sender != nil {
+		s.sender.Close()
+	}
+	if s.receiver != nil {
+		s.receiver.Close()
+	}
 
 	return nil
 }
