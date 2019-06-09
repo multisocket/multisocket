@@ -185,9 +185,10 @@ func (s *sender) closePipe(p *pipe) {
 func (s *sender) resendMsg(msg *multisocket.Message) {
 	if s.sendType == SendOne {
 		// only resend when send one
-		if msg.Source == nil || msg.Header.Hops > 0 {
+		if msg.Destination == nil || msg.Header.Hops > 0 {
+			// FIXME:
 			// re send, initiative/forward send msgs.
-			s.SendMsg(msg)
+			s.ForwardMsg(msg)
 		}
 	}
 }
@@ -217,7 +218,7 @@ SENDING:
 			continue
 		}
 
-		if err = p.p.Send(msg.Header.Encode(), msg.Source.Encode(), msg.Content); err != nil {
+		if err = p.p.Send(msg.Header.Encode(), msg.Source.Encode(), msg.Destination.Encode(), msg.Content); err != nil {
 			s.resendMsg(msg)
 			break SENDING
 		}
@@ -228,32 +229,44 @@ SENDING:
 		Debug("pipe stopped run")
 }
 
-func (s *sender) newMsg(src multisocket.MsgSource, content []byte) (msg *multisocket.Message) {
-	msg = NewMessage(src, content)
+func (s *sender) newMsg(dest multisocket.MsgPath, content []byte) (msg *multisocket.Message) {
+	msg = NewMessage(dest, content)
 	if val, ok := s.GetOption(OptionTTL); ok {
 		msg.Header.TTL = OptionTTL.Value(val)
 	}
 	return
 }
 
-func (s *sender) SendTo(src multisocket.MsgSource, content []byte) (err error) {
+func (s *sender) sendTo(msg *multisocket.Message) (err error) {
 	var (
 		id uint32
 		ok bool
 		p  *pipe
 	)
-	if id, src, ok = src.NextID(); !ok {
+	if msg.Header.Distance == 0 {
+		// already arrived, just drop
 		return
 	}
+
+	if id, msg.Destination, ok = msg.Destination.NextID(); !ok {
+		err = ErrBadDestination
+		return
+	}
+	msg.Header.Distance = msg.Destination.Length()
 
 	s.Lock()
 	p = s.pipes[id]
 	s.Unlock()
 	if p == nil {
+		// NOTE: dest pipe not found
 		return
 	}
 
-	return p.pushMsg(s.newMsg(src, content))
+	return p.pushMsg(msg)
+}
+
+func (s *sender) SendTo(dest multisocket.MsgPath, content []byte) (err error) {
+	return s.sendTo(s.newMsg(dest, content))
 }
 
 func pushMsgToPipes(msg *multisocket.Message, pipes []*pipe) {
@@ -262,7 +275,12 @@ func pushMsgToPipes(msg *multisocket.Message, pipes []*pipe) {
 	}
 }
 
-func (s *sender) SendMsg(msg *multisocket.Message) (err error) {
+func (s *sender) ForwardMsg(msg *multisocket.Message) (err error) {
+	if msg.HasDestination() {
+		// forward
+		return s.sendTo(msg)
+	}
+
 	switch s.sendType {
 	case SendOne:
 		// TODO: add send timeout
@@ -288,7 +306,7 @@ func (s *sender) SendMsg(msg *multisocket.Message) (err error) {
 }
 
 func (s *sender) Send(content []byte) (err error) {
-	return s.SendMsg(s.newMsg(nil, content))
+	return s.ForwardMsg(s.newMsg(nil, content))
 }
 
 func (s *sender) Close() {

@@ -78,16 +78,16 @@ func (s *socket) NewListener(addr string, opts options.Options) (Listener, error
 	return s.connector.NewListener(addr, opts)
 }
 
-func (s *socket) SendTo(src MsgSource, content []byte) error {
-	return s.sender.SendTo(src, content)
-}
-
-func (s *socket) SendMsg(msg *Message) error {
-	return s.sender.SendMsg(msg)
+func (s *socket) SendTo(dest MsgPath, content []byte) error {
+	return s.sender.SendTo(dest, content)
 }
 
 func (s *socket) Send(content []byte) error {
 	return s.sender.Send(content)
+}
+
+func (s *socket) ForwardMsg(msg *Message) error {
+	return s.sender.ForwardMsg(msg)
 }
 
 func (s *socket) RecvMsg() (*Message, error) {

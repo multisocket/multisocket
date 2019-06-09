@@ -12,6 +12,7 @@ func (e err) Error() string {
 
 // errors
 const (
-	ErrClosed  = multisocket.ErrClosed
-	ErrTimeout = multisocket.ErrTimeout
+	ErrClosed         = multisocket.ErrClosed
+	ErrTimeout        = multisocket.ErrTimeout
+	ErrBadDestination = err("bad destination")
 )

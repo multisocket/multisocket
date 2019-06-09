@@ -43,7 +43,8 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	var (
 		payload []byte
 		header  *multisocket.MsgHeader
-		source  multisocket.MsgSource
+		source  multisocket.MsgPath
+		dest    multisocket.MsgPath
 	)
 	if payload, err = p.p.Recv(); err != nil {
 		return
@@ -53,15 +54,20 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 		return
 	}
 	headerSize := header.Size()
-	source = NewSourceFromBytes(int(header.Hops), payload[headerSize:])
-	content := payload[headerSize+source.Size():]
+	source = NewPathFromBytes(int(header.Hops), payload[headerSize:])
+	sourceSize := source.Size()
+	dest = NewPathFromBytes(header.DestLength(), payload[headerSize+sourceSize:])
+	content := payload[headerSize+sourceSize+dest.Size():]
 
 	source = source.NewID(p.p.ID())
 	header.Hops++
 	header.TTL--
 	msg = &multisocket.Message{
-		Header:  header,
-		Source:  source,
+		BaseMessage: multisocket.BaseMessage{
+			Header:      header,
+			Source:      source,
+			Destination: dest,
+		},
 		Content: content,
 	}
 	return
@@ -187,7 +193,7 @@ RECVING:
 
 func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {
 	if r.recvNone {
-		err = ErrRecvNotAllowd
+		err = ErrOperationNotSupported
 		return
 	}
 
@@ -197,7 +203,7 @@ func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {
 
 func (r *receiver) Recv() (content []byte, err error) {
 	if r.recvNone {
-		err = ErrRecvNotAllowd
+		err = ErrOperationNotSupported
 		return
 	}
 
