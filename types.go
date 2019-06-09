@@ -19,9 +19,9 @@ type (
 		ListenOptions(addr string, opts options.Options) error
 		NewListener(addr string, opts options.Options) (Listener, error)
 
-		SendTo(src MsgSource, content []byte) error // for reply send
-		SendMsg(msg *Message) error                 // for forward send
-		Send(content []byte) error                  // for initiative send
+		SendTo(dest MsgPath, content []byte) error // for reply send
+		Send(content []byte) error                 // for initiative send
+		ForwardMsg(msg *Message) error             // for forward send
 
 		RecvMsg() (*Message, error)
 		Recv() ([]byte, error)
@@ -47,7 +47,7 @@ type (
 )
 
 type (
-	// Pipe is a connection between two peer.
+	// Pipe is a connection between two peers.
 	Pipe interface {
 		ID() uint32
 		LocalAddress() string
@@ -101,9 +101,11 @@ type (
 
 		AttachConnector(Connector)
 
-		SendTo(src MsgSource, content []byte) error // for reply send
-		SendMsg(msg *Message) error                 // for forward send
-		Send(content []byte) error                  // for initiative send
+		// SendStreamTo(dest MsgPath, content io.Reader) error // for reply send
+		SendTo(dest MsgPath, content []byte) error // for reply send
+		// SendStream(content io.Reader) error                 // for initiative send
+		Send(content []byte) error     // for initiative send
+		ForwardMsg(msg *Message) error // for forward send
 
 		Close()
 	}
@@ -116,6 +118,7 @@ type (
 
 		RecvMsg() (*Message, error)
 		Recv() ([]byte, error)
+		// RecvStream() (io.Reader, error)
 
 		Close()
 	}

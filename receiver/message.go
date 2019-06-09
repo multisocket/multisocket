@@ -25,7 +25,7 @@ func NewHeaderFromBytes(payload []byte) (header *multisocket.MsgHeader, err erro
 	return
 }
 
-// NewSourceFromBytes create a source from bytes.
-func NewSourceFromBytes(n int, payload []byte) multisocket.MsgSource {
-	return multisocket.MsgSource(append([]byte{}, payload[:4*n]...))
+// NewPathFromBytes create a path from bytes.
+func NewPathFromBytes(n int, payload []byte) multisocket.MsgPath {
+	return multisocket.MsgPath(append([]byte{}, payload[:4*n]...))
 }

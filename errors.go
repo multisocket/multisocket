@@ -8,6 +8,7 @@ func (e err) Error() string {
 
 // errors
 const (
-	ErrClosed  = err("object is closed")
-	ErrTimeout = err("operation time out")
+	ErrClosed                = err("object is closed")
+	ErrTimeout               = err("operation time out")
+	ErrOperationNotSupported = err("operation not supported")
 )

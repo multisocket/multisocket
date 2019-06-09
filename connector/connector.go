@@ -3,11 +3,10 @@ package connector
 import (
 	"sync"
 
-	"github.com/webee/multisocket/options"
-
 	log "github.com/sirupsen/logrus"
 
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
 )
 
@@ -25,8 +24,8 @@ type (
 )
 
 const (
-	// defaultMaxRxSize is the default maximum Rx size
-	defaultMaxRxSize = 1024 * 1024
+	// defaultMaxRxMsgSize is the default maximum Rx Msg size
+	defaultMaxRxMsgSize = 1024 * 1024
 	// -1 no limit
 	defaultConnLimit = -1
 )
@@ -208,7 +207,7 @@ func (c *connector) NewDialer(addr string, opts options.Options) (d multisocket.
 	if td, err = t.NewDialer(addr); err != nil {
 		return
 	}
-	td.SetOption(transport.OptionMaxRecvSize, defaultMaxRxSize)
+	td.SetOption(transport.OptionMaxRecvMsgSize, defaultMaxRxMsgSize)
 
 	xd := newDialer(c, td)
 	if c.limit != -1 && c.limit <= len(c.pipes) {
@@ -260,7 +259,7 @@ func (c *connector) NewListener(addr string, opts options.Options) (l multisocke
 	if tl, err = t.NewListener(addr); err != nil {
 		return
 	}
-	tl.SetOption(transport.OptionMaxRecvSize, defaultMaxRxSize)
+	tl.SetOption(transport.OptionMaxRecvMsgSize, defaultMaxRxMsgSize)
 
 	for _, ov := range opts.OptionValues() {
 		if err = tl.SetOption(ov.Option, ov.Value); err != nil {
