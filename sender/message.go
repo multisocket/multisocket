@@ -21,10 +21,8 @@ func NewMessage(dest multisocket.MsgPath, content []byte) *multisocket.Message {
 		header.Distance = dest.Length()
 	}
 	return &multisocket.Message{
-		BaseMessage: multisocket.BaseMessage{
-			Header:      NewHeader(),
-			Destination: dest,
-		},
-		Content: content,
+		Header:      NewHeader(),
+		Destination: dest,
+		Content:     content,
 	}
 }

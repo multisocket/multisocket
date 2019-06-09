@@ -63,12 +63,10 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	header.Hops++
 	header.TTL--
 	msg = &multisocket.Message{
-		BaseMessage: multisocket.BaseMessage{
-			Header:      header,
-			Source:      source,
-			Destination: dest,
-		},
-		Content: content,
+		Header:      header,
+		Source:      source,
+		Destination: dest,
+		Content:     content,
 	}
 	return
 }
