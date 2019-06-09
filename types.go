@@ -101,11 +101,9 @@ type (
 
 		AttachConnector(Connector)
 
-		// SendStreamTo(dest MsgPath, content io.Reader) error // for reply send
 		SendTo(dest MsgPath, content []byte) error // for reply send
-		// SendStream(content io.Reader) error                 // for initiative send
-		Send(content []byte) error     // for initiative send
-		ForwardMsg(msg *Message) error // for forward send
+		Send(content []byte) error                 // for initiative send
+		ForwardMsg(msg *Message) error             // for forward send
 
 		Close()
 	}
@@ -118,7 +116,6 @@ type (
 
 		RecvMsg() (*Message, error)
 		Recv() ([]byte, error)
-		// RecvStream() (io.Reader, error)
 
 		Close()
 	}

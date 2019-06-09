@@ -3,14 +3,12 @@ package multisocket
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
 	"unsafe"
 )
 
 type (
 	// MsgHeader message meta data
 	MsgHeader struct {
-		Type     uint8
 		TTL      uint8 // time to live
 		Hops     uint8 // node count from origin
 		Distance uint8 // node count to destination, 0xff means initiative/forward send, [0,0xff) means reply send.
@@ -19,31 +17,13 @@ type (
 	// MsgPath is message's path composed of pipe ids(uint32) traceback.
 	MsgPath []byte
 
-	// BaseMessage is the base message
-	BaseMessage struct {
+	// Message is a message
+	Message struct {
 		Header      *MsgHeader
 		Source      MsgPath
 		Destination MsgPath
+		Content     []byte
 	}
-
-	// Message is a complete message
-	Message struct {
-		BaseMessage
-		Content []byte
-	}
-
-	// StreamMessage is a stream message
-	StreamMessage struct {
-		BaseMessage
-		Content io.Reader
-	}
-)
-
-const (
-	// MsgTypeWhole is a complete message
-	MsgTypeWhole = 0
-	// MsgTypeStream is stream message
-	MsgTypeStream = 1
 )
 
 // Size get Header byte size.
@@ -111,6 +91,6 @@ func (src MsgPath) NextID() (id uint32, source MsgPath, ok bool) {
 }
 
 // HasDestination check if msg has a destination
-func (msg *BaseMessage) HasDestination() bool {
+func (msg *Message) HasDestination() bool {
 	return msg.Header.Distance != 0xff || msg.Destination.Length() > 0
 }
