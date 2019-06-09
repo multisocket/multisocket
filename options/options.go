@@ -95,6 +95,16 @@ type (
 	uint16Option struct {
 		baseOption
 	}
+
+	// Uint32Option is option with uint32 value.
+	Uint32Option interface {
+		Option
+		Value(val interface{}) uint32
+	}
+
+	uint32Option struct {
+		baseOption
+	}
 )
 
 // errors
@@ -360,4 +370,31 @@ func (o *uint16Option) Validate(val interface{}) (newVal interface{}, err error)
 // Value get option's value, must ensure option value is not empty
 func (o *uint16Option) Value(val interface{}) uint16 {
 	return val.(uint16)
+}
+
+// NewUint32Option create an uint32 option
+func NewUint32Option(name interface{}) Uint32Option {
+	return &uint32Option{baseOption{name}}
+}
+
+// Validate validate the option value
+func (o *uint32Option) Validate(val interface{}) (newVal interface{}, err error) {
+	switch x := val.(type) {
+	case uint32:
+		newVal = x
+	case int:
+		if x >= 0 && x <= math.MaxUint32 {
+			newVal = uint32(x)
+			break
+		}
+		err = ErrInvalidOptionValue
+	default:
+		err = ErrInvalidOptionValue
+	}
+	return
+}
+
+// Value get option's value, must ensure option value is not empty
+func (o *uint32Option) Value(val interface{}) uint32 {
+	return val.(uint32)
 }
