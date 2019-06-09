@@ -15,4 +15,5 @@ const (
 	ErrClosed         = multisocket.ErrClosed
 	ErrTimeout        = multisocket.ErrTimeout
 	ErrBadDestination = err("bad destination")
+	ErrPipeNotFound   = err("pipe not found")
 )

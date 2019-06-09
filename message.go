@@ -90,6 +90,11 @@ func (src MsgPath) NextID() (id uint32, source MsgPath, ok bool) {
 	return
 }
 
+// Encode encode msg to bytes.
+func (msg *Message) Encode() [][]byte {
+	return [][]byte{msg.Header.Encode(), msg.Source.Encode(), msg.Destination.Encode(), msg.Content}
+}
+
 // HasDestination check if msg has a destination
 func (msg *Message) HasDestination() bool {
 	return msg.Header.Distance != 0xff || msg.Destination.Length() > 0
