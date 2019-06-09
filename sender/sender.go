@@ -12,8 +12,7 @@ type (
 	sender struct {
 		options.Options
 
-		sendType     SendType
-		pipeSelector PipeSelector
+		sendType SendType
 
 		sync.Mutex
 		attachedConnectors map[multisocket.Connector]struct{}
@@ -29,21 +28,14 @@ type (
 		sendq   chan *multisocket.Message
 	}
 
-	// SendType 0, 1, n, N
+	// SendType [0], 1, [n], N
 	SendType int
-
-	// PipeSelector is for selecting pipes to send.
-	PipeSelector interface {
-		Select(pipes map[uint32]*pipe) []*pipe
-	}
 )
 
 // sender types
 const (
 	// random select one pipe to send
 	SendOne SendType = iota
-	// select some pipes to send
-	SendSome
 	// send to all pipes
 	SendAll
 )
@@ -65,40 +57,29 @@ func (p *pipe) pushMsg(msg *multisocket.Message) error {
 
 // New create a SendOne sender
 func New() multisocket.Sender {
-	return NewWithOptions(SendOne, nil)
+	return NewWithOptions(SendOne)
 }
 
 // NewSendOneWithOptions create a SendOne sender with options
 func NewSendOneWithOptions(ovs ...*options.OptionValue) multisocket.Sender {
-	return NewWithOptions(SendOne, nil, ovs...)
+	return NewWithOptions(SendOne, ovs...)
 }
 
 // NewSendAll create a SendAll sender
 func NewSendAll() multisocket.Sender {
-	return NewWithOptions(SendAll, nil)
+	return NewWithOptions(SendAll)
 }
 
 // NewSendAllWithOptions create a SendAll sender with options
 func NewSendAllWithOptions(ovs ...*options.OptionValue) multisocket.Sender {
-	return NewWithOptions(SendAll, nil, ovs...)
-}
-
-// NewSelectSend create a SendSome sender
-func NewSelectSend(pipeSelector PipeSelector) multisocket.Sender {
-	return NewWithOptions(SendSome, pipeSelector)
-}
-
-// NewSelectSendWithOptions create a SendSome sender with options
-func NewSelectSendWithOptions(pipeSelector PipeSelector, ovs ...*options.OptionValue) multisocket.Sender {
-	return NewWithOptions(SendSome, pipeSelector, ovs...)
+	return NewWithOptions(SendAll, ovs...)
 }
 
 // NewWithOptions create a sender with options
-func NewWithOptions(sendType SendType, pipeSelector PipeSelector, ovs ...*options.OptionValue) multisocket.Sender {
+func NewWithOptions(sendType SendType, ovs ...*options.OptionValue) multisocket.Sender {
 	s := &sender{
 		Options:            options.NewOptions(),
 		sendType:           sendType,
-		pipeSelector:       pipeSelector,
 		attachedConnectors: make(map[multisocket.Connector]struct{}),
 		closed:             false,
 		closedq:            make(chan struct{}),
@@ -293,11 +274,6 @@ func (s *sender) ForwardMsg(msg *multisocket.Message) (err error) {
 			pipes[i] = p
 			i++
 		}
-		s.Unlock()
-		go pushMsgToPipes(msg, pipes)
-	case SendSome:
-		s.Lock()
-		pipes := s.pipeSelector.Select(s.pipes)
 		s.Unlock()
 		go pushMsgToPipes(msg, pipes)
 	}
