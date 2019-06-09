@@ -59,7 +59,7 @@ var (
 
 // New create a SendOne sender
 func New() Sender {
-	return NewWithOptions(SendOne)
+	return NewSendOneWithOptions()
 }
 
 // NewSendOneWithOptions create a SendOne sender with options
@@ -69,7 +69,7 @@ func NewSendOneWithOptions(ovs ...*options.OptionValue) Sender {
 
 // NewSendAll create a SendAll sender
 func NewSendAll() Sender {
-	return NewWithOptions(SendAll)
+	return NewSendAllWithOptions()
 }
 
 // NewSendAllWithOptions create a SendAll sender with options

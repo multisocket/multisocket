@@ -13,8 +13,6 @@ type (
 	receiver struct {
 		options.Options
 
-		recvNone bool // no recving
-
 		sync.Mutex
 		attachedConnectors map[multisocket.Connector]struct{}
 		closed             bool
@@ -76,25 +74,15 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	return
 }
 
-// New create a normal receiver.
+// New create a receiver.
 func New() multisocket.Receiver {
 	return NewWithOptions()
 }
 
 // NewWithOptions create a normal receiver with options.
 func NewWithOptions(ovs ...*options.OptionValue) multisocket.Receiver {
-	return newWithOptions(false, ovs...)
-}
-
-// NewRecvNone create an recv none receiver.
-func NewRecvNone() multisocket.Receiver {
-	return newWithOptions(true)
-}
-
-func newWithOptions(recvNone bool, ovs ...*options.OptionValue) multisocket.Receiver {
 	r := &receiver{
 		Options:            options.NewOptions(),
-		recvNone:           recvNone,
 		attachedConnectors: make(map[multisocket.Connector]struct{}),
 		closed:             false,
 		closedq:            make(chan struct{}),
@@ -112,7 +100,7 @@ func (r *receiver) AttachConnector(connector multisocket.Connector) {
 	defer r.Unlock()
 
 	// OptionRecvQueueSize useless after first attach
-	if !r.recvNone && r.recvq == nil {
+	if r.recvq == nil {
 		r.recvq = make(chan *multisocket.Message, r.recvQueueSize())
 	}
 
@@ -179,17 +167,19 @@ RECVING:
 		if msg, err = p.recvMsg(); err != nil {
 			break
 		}
-		if !r.recvNone {
-			r.recvq <- msg
-		}
-		// else drop msg
 
 		select {
 		case <-r.closedq:
 			break RECVING
 		case <-p.closedq:
+			// try recv pipe's last msg
+			select {
+			case <-r.closedq:
+				break RECVING
+			case r.recvq <- msg:
+			}
 			break RECVING
-		default:
+		case r.recvq <- msg:
 		}
 	}
 	r.remPipe(p.p.ID())
@@ -199,11 +189,6 @@ RECVING:
 }
 
 func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {
-	if r.recvNone {
-		err = ErrOperationNotSupported
-		return
-	}
-
 	recvDeadline := r.recvDeadline()
 	tq := nilQ
 	if recvDeadline > 0 {
@@ -223,11 +208,6 @@ func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {
 }
 
 func (r *receiver) Recv() (content []byte, err error) {
-	if r.recvNone {
-		err = ErrOperationNotSupported
-		return
-	}
-
 	var msg *multisocket.Message
 	if msg, err = r.RecvMsg(); err != nil {
 		return

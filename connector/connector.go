@@ -32,7 +32,7 @@ const (
 
 // New create a any Connector
 func New() multisocket.Connector {
-	return NewWithLimitAndOptions(defaultConnLimit)
+	return NewWithOptions()
 }
 
 // NewWithOptions create a Connector with options
