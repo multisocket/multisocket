@@ -2,6 +2,7 @@ package sender
 
 import (
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
@@ -15,21 +16,29 @@ type (
 		sendType SendType
 
 		sync.Mutex
-		attachedConnectors map[multisocket.Connector]struct{}
+		attachedConnectors map[Connector]struct{}
 		closed             bool
 		closedq            chan struct{}
 		pipes              map[uint32]*pipe
-		sendq              chan *multisocket.Message
+		sendq              chan *Message
 	}
 
 	pipe struct {
 		closedq chan struct{}
-		p       multisocket.Pipe
-		sendq   chan *multisocket.Message
+		p       Pipe
+		sendq   chan *Message
 	}
 
 	// SendType [0], 1, [n], N
 	SendType int
+)
+
+// Type aliases
+type (
+	Message   = multisocket.Message
+	Connector = multisocket.Connector
+	Sender    = multisocket.Sender
+	Pipe      = multisocket.Pipe
 )
 
 // sender types
@@ -44,43 +53,36 @@ const (
 	defaultSendQueueSize = uint16(8)
 )
 
-func (p *pipe) pushMsg(msg *multisocket.Message) error {
-	select {
-	case <-p.closedq:
-		return ErrClosed
-	default:
-		// TODO: add send timeout
-		p.sendq <- msg
-	}
-	return nil
-}
+var (
+	nilQ <-chan time.Time
+)
 
 // New create a SendOne sender
-func New() multisocket.Sender {
+func New() Sender {
 	return NewWithOptions(SendOne)
 }
 
 // NewSendOneWithOptions create a SendOne sender with options
-func NewSendOneWithOptions(ovs ...*options.OptionValue) multisocket.Sender {
+func NewSendOneWithOptions(ovs ...*options.OptionValue) Sender {
 	return NewWithOptions(SendOne, ovs...)
 }
 
 // NewSendAll create a SendAll sender
-func NewSendAll() multisocket.Sender {
+func NewSendAll() Sender {
 	return NewWithOptions(SendAll)
 }
 
 // NewSendAllWithOptions create a SendAll sender with options
-func NewSendAllWithOptions(ovs ...*options.OptionValue) multisocket.Sender {
+func NewSendAllWithOptions(ovs ...*options.OptionValue) Sender {
 	return NewWithOptions(SendAll, ovs...)
 }
 
 // NewWithOptions create a sender with options
-func NewWithOptions(sendType SendType, ovs ...*options.OptionValue) multisocket.Sender {
+func NewWithOptions(sendType SendType, ovs ...*options.OptionValue) Sender {
 	s := &sender{
 		Options:            options.NewOptions(),
 		sendType:           sendType,
-		attachedConnectors: make(map[multisocket.Connector]struct{}),
+		attachedConnectors: make(map[Connector]struct{}),
 		closed:             false,
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
@@ -91,21 +93,55 @@ func NewWithOptions(sendType SendType, ovs ...*options.OptionValue) multisocket.
 	return s
 }
 
-func (s *sender) newPipe(p multisocket.Pipe) *pipe {
-	return &pipe{
-		closedq: make(chan struct{}),
-		p:       p,
-		sendq:   make(chan *multisocket.Message, s.sendQueueSize()),
+func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan struct{}) error {
+	bestEffort := s.bestEffort()
+	if bestEffort {
+		select {
+		case <-closeq:
+			return ErrClosed
+		case <-s.closedq:
+			return ErrClosed
+		case sendq <- msg:
+			return nil
+		default:
+			// drop msg
+			return nil
+		}
+	}
+
+	sendDeadline := s.sendDeadline()
+	tq := nilQ
+	if sendDeadline > 0 {
+		tq = time.After(sendDeadline)
+	}
+
+	select {
+	case <-closeq:
+		return ErrClosed
+	case <-s.closedq:
+		return ErrClosed
+	case sendq <- msg:
+		return nil
+	case <-tq:
+		return ErrTimeout
 	}
 }
 
-func (s *sender) AttachConnector(connector multisocket.Connector) {
+func (s *sender) newPipe(p Pipe) *pipe {
+	return &pipe{
+		closedq: make(chan struct{}),
+		p:       p,
+		sendq:   make(chan *Message, s.sendQueueSize()),
+	}
+}
+
+func (s *sender) AttachConnector(connector Connector) {
 	s.Lock()
 	defer s.Unlock()
 
 	// OptionSendQueueSize useless after first attach
 	if s.sendq == nil {
-		s.sendq = make(chan *multisocket.Message, s.sendQueueSize())
+		s.sendq = make(chan *Message, s.sendQueueSize())
 	}
 
 	connector.RegisterPipeEventHandler(s)
@@ -117,7 +153,15 @@ func (s *sender) sendQueueSize() uint16 {
 	return OptionSendQueueSize.Value(s.GetOptionDefault(OptionSendQueueSize, defaultSendQueueSize))
 }
 
-func (s *sender) HandlePipeEvent(e multisocket.PipeEvent, pipe multisocket.Pipe) {
+func (s *sender) bestEffort() bool {
+	return OptionSendBestEffort.Value(s.GetOptionDefault(OptionSendBestEffort, false))
+}
+
+func (s *sender) sendDeadline() time.Duration {
+	return OptionSendDeadline.Value(s.GetOptionDefault(OptionSendDeadline, time.Duration(0)))
+}
+
+func (s *sender) HandlePipeEvent(e multisocket.PipeEvent, pipe Pipe) {
 	switch e {
 	case multisocket.PipeEventAdd:
 		s.addPipe(pipe)
@@ -126,7 +170,7 @@ func (s *sender) HandlePipeEvent(e multisocket.PipeEvent, pipe multisocket.Pipe)
 	}
 }
 
-func (s *sender) addPipe(pipe multisocket.Pipe) {
+func (s *sender) addPipe(pipe Pipe) {
 	s.Lock()
 	defer s.Unlock()
 	p := s.newPipe(pipe)
@@ -163,12 +207,11 @@ func (s *sender) closePipe(p *pipe) {
 	}
 }
 
-func (s *sender) resendMsg(msg *multisocket.Message) {
+func (s *sender) resendMsg(msg *Message) {
 	if s.sendType == SendOne {
 		// only resend when send one
-		if msg.Destination == nil || msg.Header.Hops > 0 {
-			// FIXME:
-			// re send, initiative/forward send msgs.
+		if !msg.HasDestination() {
+			// resend initiative send msgs(no destination), so we can choose another pipe to send.
 			s.ForwardMsg(msg)
 		}
 	}
@@ -181,7 +224,7 @@ func (s *sender) run(p *pipe) {
 
 	var (
 		err error
-		msg *multisocket.Message
+		msg *Message
 	)
 
 SENDING:
@@ -199,7 +242,7 @@ SENDING:
 			continue
 		}
 
-		if err = p.p.Send(msg.Header.Encode(), msg.Source.Encode(), msg.Destination.Encode(), msg.Content); err != nil {
+		if err = p.p.Send(msg.Encode()...); err != nil {
 			s.resendMsg(msg)
 			break SENDING
 		}
@@ -210,7 +253,7 @@ SENDING:
 		Debug("pipe stopped run")
 }
 
-func (s *sender) newMsg(dest multisocket.MsgPath, content []byte) (msg *multisocket.Message) {
+func (s *sender) newMsg(dest multisocket.MsgPath, content []byte) (msg *Message) {
 	msg = NewMessage(dest, content)
 	if val, ok := s.GetOption(OptionTTL); ok {
 		msg.Header.TTL = OptionTTL.Value(val)
@@ -218,7 +261,7 @@ func (s *sender) newMsg(dest multisocket.MsgPath, content []byte) (msg *multisoc
 	return
 }
 
-func (s *sender) sendTo(msg *multisocket.Message) (err error) {
+func (s *sender) sendTo(msg *Message) (err error) {
 	var (
 		id uint32
 		ok bool
@@ -239,24 +282,24 @@ func (s *sender) sendTo(msg *multisocket.Message) (err error) {
 	p = s.pipes[id]
 	s.Unlock()
 	if p == nil {
-		// NOTE: dest pipe not found
+		err = ErrPipeNotFound
 		return
 	}
 
-	return p.pushMsg(msg)
+	return s.doPushMsg(msg, p.sendq, p.closedq)
 }
 
 func (s *sender) SendTo(dest multisocket.MsgPath, content []byte) (err error) {
 	return s.sendTo(s.newMsg(dest, content))
 }
 
-func pushMsgToPipes(msg *multisocket.Message, pipes []*pipe) {
+func (s *sender) pushMsgToPipes(msg *Message, pipes []*pipe) {
 	for _, p := range pipes {
-		p.pushMsg(msg)
+		s.doPushMsg(msg, p.sendq, p.closedq)
 	}
 }
 
-func (s *sender) ForwardMsg(msg *multisocket.Message) (err error) {
+func (s *sender) ForwardMsg(msg *Message) (err error) {
 	if msg.HasDestination() {
 		// forward
 		return s.sendTo(msg)
@@ -264,8 +307,7 @@ func (s *sender) ForwardMsg(msg *multisocket.Message) (err error) {
 
 	switch s.sendType {
 	case SendOne:
-		// TODO: add send timeout
-		s.sendq <- msg
+		return s.doPushMsg(msg, s.sendq, nil)
 	case SendAll:
 		s.Lock()
 		pipes := make([]*pipe, len(s.pipes))
@@ -275,9 +317,8 @@ func (s *sender) ForwardMsg(msg *multisocket.Message) (err error) {
 			i++
 		}
 		s.Unlock()
-		go pushMsgToPipes(msg, pipes)
+		go s.pushMsgToPipes(msg, pipes)
 	}
-
 	return
 }
 

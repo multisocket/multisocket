@@ -2,6 +2,7 @@ package receiver
 
 import (
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
@@ -30,6 +31,10 @@ type (
 
 const (
 	defaultRecvQueueSize = uint16(8)
+)
+
+var (
+	nilQ <-chan time.Time
 )
 
 func newPipe(p multisocket.Pipe) *pipe {
@@ -120,6 +125,10 @@ func (r *receiver) recvQueueSize() uint16 {
 	return OptionRecvQueueSize.Value(r.GetOptionDefault(OptionRecvQueueSize, defaultRecvQueueSize))
 }
 
+func (r *receiver) recvDeadline() time.Duration {
+	return OptionRecvDeadline.Value(r.GetOptionDefault(OptionRecvDeadline, time.Duration(0)))
+}
+
 func (r *receiver) HandlePipeEvent(e multisocket.PipeEvent, pipe multisocket.Pipe) {
 	switch e {
 	case multisocket.PipeEventAdd:
@@ -195,8 +204,22 @@ func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {
 		return
 	}
 
-	msg = <-r.recvq
-	return
+	recvDeadline := r.recvDeadline()
+	tq := nilQ
+	if recvDeadline > 0 {
+		tq = time.After(recvDeadline)
+	}
+
+	select {
+	case <-r.closedq:
+		err = ErrClosed
+		return
+	case <-tq:
+		err = ErrTimeout
+		return
+	case msg = <-r.recvq:
+		return
+	}
 }
 
 func (r *receiver) Recv() (content []byte, err error) {
