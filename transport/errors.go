@@ -13,6 +13,7 @@ func (e err) Error() string {
 // errors
 const (
 	ErrClosed     = multisocket.ErrClosed
+	ErrOperationNotSupported = multisocket.ErrOperationNotSupported
 	ErrBadTran    = err("invalid or unsupported transport")
 	ErrMsgTooLong = err("message is too long")
 )

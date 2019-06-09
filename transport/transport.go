@@ -4,42 +4,7 @@ import (
 	"net"
 	"strings"
 	"sync"
-
-	"github.com/webee/multisocket/options"
 )
-
-// Connection is connection between peers.
-type Connection interface {
-	Send(...[]byte) error
-	Recv() ([]byte, error)
-	Close() error
-
-	LocalAddress() string
-	RemoteAddress() string
-}
-
-// Dialer is dialer
-type Dialer interface {
-	options.Options
-
-	Dial() (Connection, error)
-}
-
-// Listener is listener
-type Listener interface {
-	options.Options
-
-	Listen() error
-	Accept() (Connection, error)
-	Close() error
-}
-
-// Transport is transport
-type Transport interface {
-	Scheme() string
-	NewDialer(address string) (Dialer, error)
-	NewListener(address string) (Listener, error)
-}
 
 // StripScheme removes the leading scheme (such as "http://") from an address
 // string.  This is mostly a utility for benefit of transport providers.

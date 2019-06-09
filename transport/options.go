@@ -7,10 +7,10 @@ import (
 type optionName int
 
 const (
-	optionNameMaxRecvSize optionName = iota
+	optionNameMaxRecvMsgSize optionName = iota
 )
 
 // Options
 var (
-	OptionMaxRecvSize = options.NewIntOption(optionNameMaxRecvSize)
+	OptionMaxRecvMsgSize = options.NewUint32Option(optionNameMaxRecvMsgSize)
 )

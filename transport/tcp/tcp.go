@@ -61,7 +61,7 @@ func (d *dialer) Dial() (_ transport.Connection, err error) {
 		return nil, err
 	}
 
-	return transport.NewConnection(Transport.Scheme(), conn, d.Options)
+	return transport.NewConnection(Transport, conn, d.Options)
 }
 
 type listener struct {
@@ -84,7 +84,7 @@ func (l *listener) Accept() (transport.Connection, error) {
 		conn.Close()
 		return nil, err
 	}
-	return transport.NewConnection(Transport.Scheme(), conn, l.Options)
+	return transport.NewConnection(Transport, conn, l.Options)
 }
 
 func (l *listener) Listen() (err error) {
@@ -118,7 +118,7 @@ func newDefaultOptions() options.Options {
 	return options.NewOptions().
 		WithOption(OptionNoDelay, true).
 		WithOption(OptionKeepAlive, true).
-		WithOption(transport.OptionMaxRecvSize, 0)
+		WithOption(transport.OptionMaxRecvMsgSize, 0)
 }
 
 func (t tcpTran) NewDialer(addr string) (transport.Dialer, error) {
