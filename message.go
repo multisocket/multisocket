@@ -107,3 +107,9 @@ func (msg *Message) Encode() [][]byte {
 func (msg *Message) HasDestination() bool {
 	return msg.Header.SendType == SendTypeReply || msg.Destination.Length() > 0
 }
+
+// PipeID get this message's source pipe id.
+func (msg *Message) PipeID() (id uint32) {
+	id, _ = msg.Source.CurID()
+	return
+}
