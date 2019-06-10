@@ -75,6 +75,9 @@ type (
 		Listen(addr string) error
 		ListenOptions(addr string, opts options.Options) error
 		NewListener(addr string, opts options.Options) (Listener, error)
+
+		GetPipe(id uint32) Pipe
+		ClosePipe(id uint32)
 	}
 
 	// Connector controls socket's connections

@@ -82,6 +82,14 @@ func (s *socket) NewListener(addr string, opts options.Options) (Listener, error
 	return s.connector.NewListener(addr, opts)
 }
 
+func (s *socket) GetPipe(id uint32) Pipe {
+	return s.connector.GetPipe(id)
+}
+
+func (s *socket) ClosePipe(id uint32) {
+	s.connector.ClosePipe(id)
+}
+
 func (s *socket) SendTo(dest MsgPath, content []byte) error {
 	if s.sender == nil {
 		return ErrOperationNotSupported

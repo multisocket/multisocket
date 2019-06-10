@@ -17,7 +17,7 @@ type (
 		limit             int
 		dialers           []*dialer
 		listeners         []*listener
-		pipes             map[*pipe]struct{}
+		pipes             map[uint32]*pipe
 		pipeEventHandlers map[multisocket.PipeEventHandler]struct{}
 		closed            bool
 	}
@@ -46,7 +46,7 @@ func NewWithLimitAndOptions(limit int, ovs ...*options.OptionValue) multisocket.
 		limit:             limit,
 		dialers:           make([]*dialer, 0),
 		listeners:         make([]*listener, 0),
-		pipes:             make(map[*pipe]struct{}),
+		pipes:             make(map[uint32]*pipe),
 		pipeEventHandlers: make(map[multisocket.PipeEventHandler]struct{}),
 	}
 	c.Options = options.NewOptionsWithAccepts(OptionConnLimit).SetOptionChangeHook(c.onOptionChange)
@@ -134,7 +134,7 @@ func (c *connector) addPipe(p *pipe) {
 			WithField("pipes", len(c.pipes)).
 			Debug("add pipe")
 
-		c.pipes[p] = struct{}{}
+		c.pipes[p.ID()] = p
 		for peh := range c.pipeEventHandlers {
 			go peh.HandlePipeEvent(multisocket.PipeEventAdd, p)
 		}
@@ -153,7 +153,7 @@ func (c *connector) addPipe(p *pipe) {
 
 func (c *connector) remPipe(p *pipe) {
 	c.Lock()
-	delete(c.pipes, p)
+	delete(c.pipes, p.ID())
 	for peh := range c.pipeEventHandlers {
 		go peh.HandlePipeEvent(multisocket.PipeEventRemove, p)
 	}
@@ -278,6 +278,20 @@ func (c *connector) NewListener(addr string, opts options.Options) (l multisocke
 	c.listeners = append(c.listeners, xl)
 
 	return
+}
+
+func (c *connector) GetPipe(id uint32) (p multisocket.Pipe) {
+	c.Lock()
+	p = c.pipes[id]
+	c.Unlock()
+	return
+}
+
+func (c *connector) ClosePipe(id uint32) {
+	p := c.GetPipe(id)
+	if p != nil {
+		p.Close()
+	}
 }
 
 func (c *connector) Close() {
