@@ -11,6 +11,9 @@ import (
 // pipe wraps the transport.Connection data structure with the stuff we need to keep.
 // It implements the Pipe interface.
 type pipe struct {
+	sendDeadline time.Duration
+	recvDeadline time.Duration
+
 	sync.Mutex
 	id     uint32
 	parent *connector
@@ -57,11 +60,13 @@ var pipeID = &idGen{
 
 func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener) *pipe {
 	return &pipe{
-		id:     pipeID.nextID(),
-		parent: parent,
-		c:      tc,
-		d:      d,
-		l:      l,
+		sendDeadline: PipeOptionSendDeadline.Value(parent.GetOptionDefault(PipeOptionSendDeadline, time.Duration(0))),
+		recvDeadline: PipeOptionRecvDeadline.Value(parent.GetOptionDefault(PipeOptionRecvDeadline, time.Duration(0))),
+		id:           pipeID.nextID(),
+		parent:       parent,
+		c:            tc,
+		d:            d,
+		l:            l,
 	}
 }
 
@@ -97,20 +102,59 @@ func (p *pipe) Close() {
 }
 
 func (p *pipe) Send(msgs ...[]byte) (err error) {
-	if err = p.c.Send(msgs...); err != nil {
-		// NOTE: close on any error
-		go p.Close()
-		err = ErrClosed
+	if p.sendDeadline <= 0 {
+		if err = p.c.Send(msgs...); err != nil {
+			// NOTE: close on any error
+			go p.Close()
+			err = ErrClosed
+		}
+		return
+	}
+
+	tq := time.After(p.sendDeadline)
+	done := make(chan struct{})
+
+	go func() {
+		if err = p.c.Send(msgs...); err != nil {
+			// NOTE: close on any error
+			go p.Close()
+			err = ErrClosed
+		}
+		done <- struct{}{}
+	}()
+	select {
+	case <-tq:
+		err = ErrTimeout
+	case <-done:
 	}
 	return
 }
 
 func (p *pipe) Recv() (msg []byte, err error) {
-	if msg, err = p.c.Recv(); err != nil {
-		// NOTE: close on any error
-		go p.Close()
-		err = ErrClosed
+	if p.recvDeadline <= 0 {
+		if msg, err = p.c.Recv(); err != nil {
+			// NOTE: close on any error
+			go p.Close()
+			err = ErrClosed
+		}
+		return
 	}
 
+	tq := time.After(p.recvDeadline)
+	done := make(chan struct{})
+	go func() {
+		if msg, err = p.c.Recv(); err != nil {
+			// NOTE: close on any error
+			go p.Close()
+			err = ErrClosed
+		}
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-tq:
+		err = ErrTimeout
+	case <-done:
+	}
 	return
 }

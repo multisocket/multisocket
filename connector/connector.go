@@ -49,7 +49,7 @@ func NewWithLimitAndOptions(limit int, ovs ...*options.OptionValue) multisocket.
 		pipes:             make(map[uint32]*pipe),
 		pipeEventHandlers: make(map[multisocket.PipeEventHandler]struct{}),
 	}
-	c.Options = options.NewOptionsWithAccepts(OptionConnLimit).SetOptionChangeHook(c.onOptionChange)
+	c.Options = options.NewOptionsWithAccepts(OptionConnLimit, PipeOptionSendDeadline, PipeOptionRecvDeadline).SetOptionChangeHook(c.onOptionChange)
 	for _, ov := range ovs {
 		c.SetOption(ov.Option, ov.Value)
 	}

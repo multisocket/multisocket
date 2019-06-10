@@ -14,4 +14,5 @@ func (e err) Error() string {
 const (
 	ErrAddrInUse = err("address in use")
 	ErrClosed    = multisocket.ErrClosed
+	ErrTimeout   = multisocket.ErrTimeout
 )
