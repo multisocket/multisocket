@@ -98,12 +98,20 @@ func (s *socket) Send(content []byte) error {
 	return s.sender.Send(content)
 }
 
-func (s *socket) ForwardMsg(msg *Message) error {
+func (s *socket) SendAll(content []byte) error {
 	if s.sender == nil {
 		return ErrOperationNotSupported
 	}
 
-	return s.sender.ForwardMsg(msg)
+	return s.sender.SendAll(content)
+}
+
+func (s *socket) SendMsg(msg *Message) error {
+	if s.sender == nil {
+		return ErrOperationNotSupported
+	}
+
+	return s.sender.SendMsg(msg)
 }
 
 func (s *socket) RecvMsg() (*Message, error) {

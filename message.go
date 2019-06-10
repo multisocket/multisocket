@@ -9,9 +9,10 @@ import (
 type (
 	// MsgHeader message meta data
 	MsgHeader struct {
+		SendType uint8 // one, all, rely
 		TTL      uint8 // time to live
 		Hops     uint8 // node count from origin
-		Distance uint8 // node count to destination, 0xff means initiative/forward send, [0,0xff) means reply send.
+		Distance uint8 // node count to destination
 	}
 
 	// MsgPath is message's path composed of pipe ids(uint32) traceback.
@@ -26,6 +27,16 @@ type (
 	}
 )
 
+// sender types
+const (
+	// random select one pipe to send
+	SendTypeToOne uint8 = iota
+	// send to all pipes
+	SendTypeToAll
+	// reply to a source
+	SendTypeReply
+)
+
 // Size get Header byte size.
 func (h *MsgHeader) Size() int {
 	return int(unsafe.Sizeof(*h))
@@ -33,9 +44,6 @@ func (h *MsgHeader) Size() int {
 
 // DestLength get distance length
 func (h *MsgHeader) DestLength() int {
-	if h.Distance == 0xff {
-		return 0
-	}
 	return int(h.Distance)
 }
 
@@ -71,8 +79,8 @@ func (src MsgPath) CurID() (id uint32, ok bool) {
 	return
 }
 
-// NewID add the new pipe id to head.
-func (src MsgPath) NewID(id uint32) (source MsgPath) {
+// AddID add the new pipe id to head.
+func (src MsgPath) AddID(id uint32) (source MsgPath) {
 	source = append(make([]byte, 4), src...)
 	binary.BigEndian.PutUint32(source, id)
 	return
@@ -97,5 +105,5 @@ func (msg *Message) Encode() [][]byte {
 
 // HasDestination check if msg has a destination
 func (msg *Message) HasDestination() bool {
-	return msg.Header.Distance != 0xff || msg.Destination.Length() > 0
+	return msg.Header.SendType == SendTypeReply || msg.Destination.Length() > 0
 }

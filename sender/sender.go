@@ -13,8 +13,6 @@ type (
 	sender struct {
 		options.Options
 
-		sendType SendType
-
 		sync.Mutex
 		attachedConnectors map[Connector]struct{}
 		closed             bool
@@ -28,28 +26,22 @@ type (
 		p       Pipe
 		sendq   chan *Message
 	}
-
-	// SendType [0], 1, [n], N
-	SendType int
 )
 
 // Type aliases
 type (
-	Message   = multisocket.Message
+	// Message is message
+	Message = multisocket.Message
+	// Connector is connector
 	Connector = multisocket.Connector
-	Sender    = multisocket.Sender
-	Pipe      = multisocket.Pipe
-)
-
-// sender types
-const (
-	// random select one pipe to send
-	SendOne SendType = iota
-	// send to all pipes
-	SendAll
+	// Sender is sender
+	Sender = multisocket.Sender
+	// Pipe is pipe
+	Pipe = multisocket.Pipe
 )
 
 const (
+	defaultMsgTTL        = uint8(16)
 	defaultSendQueueSize = uint16(8)
 )
 
@@ -57,31 +49,15 @@ var (
 	nilQ <-chan time.Time
 )
 
-// New create a SendOne sender
+// New create a sender
 func New() Sender {
-	return NewSendOneWithOptions()
-}
-
-// NewSendOneWithOptions create a SendOne sender with options
-func NewSendOneWithOptions(ovs ...*options.OptionValue) Sender {
-	return NewWithOptions(SendOne, ovs...)
-}
-
-// NewSendAll create a SendAll sender
-func NewSendAll() Sender {
-	return NewSendAllWithOptions()
-}
-
-// NewSendAllWithOptions create a SendAll sender with options
-func NewSendAllWithOptions(ovs ...*options.OptionValue) Sender {
-	return NewWithOptions(SendAll, ovs...)
+	return NewWithOptions()
 }
 
 // NewWithOptions create a sender with options
-func NewWithOptions(sendType SendType, ovs ...*options.OptionValue) Sender {
+func NewWithOptions(ovs ...*options.OptionValue) Sender {
 	s := &sender{
 		Options:            options.NewOptions(),
-		sendType:           sendType,
 		attachedConnectors: make(map[Connector]struct{}),
 		closed:             false,
 		closedq:            make(chan struct{}),
@@ -124,6 +100,12 @@ func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan st
 		return nil
 	case <-tq:
 		return ErrTimeout
+	}
+}
+
+func (s *sender) pushMsgToPipes(msg *Message, pipes []*pipe) {
+	for _, p := range pipes {
+		s.doPushMsg(msg, p.sendq, p.closedq)
 	}
 }
 
@@ -208,12 +190,9 @@ func (s *sender) closePipe(p *pipe) {
 }
 
 func (s *sender) resendMsg(msg *Message) {
-	if s.sendType == SendOne {
-		// only resend when send one
-		if !msg.HasDestination() {
-			// resend initiative send msgs(no destination), so we can choose another pipe to send.
-			s.ForwardMsg(msg)
-		}
+	if msg.Header.SendType == multisocket.SendTypeToOne {
+		// only resend when send one, so we can choose another pipe to send.
+		s.SendMsg(msg)
 	}
 }
 
@@ -253,12 +232,9 @@ SENDING:
 		Debug("pipe stopped run")
 }
 
-func (s *sender) newMsg(dest multisocket.MsgPath, content []byte) (msg *Message) {
-	msg = NewMessage(dest, content)
-	if val, ok := s.GetOption(OptionTTL); ok {
-		msg.Header.TTL = OptionTTL.Value(val)
-	}
-	return
+func (s *sender) newMsg(sendType uint8, dest multisocket.MsgPath, content []byte) (msg *Message) {
+	ttl := OptionTTL.Value(s.GetOptionDefault(OptionTTL, defaultMsgTTL))
+	return newMessage(sendType, ttl, dest, content)
 }
 
 func (s *sender) sendTo(msg *Message) (err error) {
@@ -272,11 +248,10 @@ func (s *sender) sendTo(msg *Message) (err error) {
 		return
 	}
 
-	if id, msg.Destination, ok = msg.Destination.NextID(); !ok {
+	if id, ok = msg.Destination.CurID(); !ok {
 		err = ErrBadDestination
 		return
 	}
-	msg.Header.Distance = msg.Destination.Length()
 
 	s.Lock()
 	p = s.pipes[id]
@@ -290,25 +265,24 @@ func (s *sender) sendTo(msg *Message) (err error) {
 }
 
 func (s *sender) SendTo(dest multisocket.MsgPath, content []byte) (err error) {
-	return s.sendTo(s.newMsg(dest, content))
+	return s.sendTo(s.newMsg(multisocket.SendTypeReply, dest, content))
 }
 
-func (s *sender) pushMsgToPipes(msg *Message, pipes []*pipe) {
-	for _, p := range pipes {
-		s.doPushMsg(msg, p.sendq, p.closedq)
-	}
+func (s *sender) Send(content []byte) (err error) {
+	return s.SendMsg(s.newMsg(multisocket.SendTypeToOne, nil, content))
 }
 
-func (s *sender) ForwardMsg(msg *Message) (err error) {
-	if msg.HasDestination() {
-		// forward
+func (s *sender) SendAll(content []byte) (err error) {
+	return s.SendMsg(s.newMsg(multisocket.SendTypeToAll, nil, content))
+}
+
+func (s *sender) SendMsg(msg *Message) error {
+	switch msg.Header.SendType {
+	case multisocket.SendTypeReply:
 		return s.sendTo(msg)
-	}
-
-	switch s.sendType {
-	case SendOne:
+	case multisocket.SendTypeToOne:
 		return s.doPushMsg(msg, s.sendq, nil)
-	case SendAll:
+	case multisocket.SendTypeToAll:
 		s.Lock()
 		pipes := make([]*pipe, len(s.pipes))
 		i := 0
@@ -318,12 +292,9 @@ func (s *sender) ForwardMsg(msg *Message) (err error) {
 		}
 		s.Unlock()
 		go s.pushMsgToPipes(msg, pipes)
+		return nil
 	}
-	return
-}
-
-func (s *sender) Send(content []byte) (err error) {
-	return s.ForwardMsg(s.newMsg(nil, content))
+	return ErrInvalidSendType
 }
 
 func (s *sender) Close() {

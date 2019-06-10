@@ -11,20 +11,9 @@ type (
 		Sender() Sender
 		Receiver() Receiver
 
-		Dial(addr string) error
-		DialOptions(addr string, opts options.Options) error
-		NewDialer(addr string, opts options.Options) (Dialer, error)
-
-		Listen(addr string) error
-		ListenOptions(addr string, opts options.Options) error
-		NewListener(addr string, opts options.Options) (Listener, error)
-
-		SendTo(dest MsgPath, content []byte) error // for reply send
-		Send(content []byte) error                 // for initiative send
-		ForwardMsg(msg *Message) error             // for forward send
-
-		RecvMsg() (*Message, error)
-		Recv() ([]byte, error)
+		ConnectorAction
+		SenderAction
+		ReceiverAction
 
 		Close() error
 	}
@@ -77,10 +66,8 @@ const (
 )
 
 type (
-	// Connector controls socket's connections
-	Connector interface {
-		options.Options
-
+	// ConnectorAction is connector's action
+	ConnectorAction interface {
 		Dial(addr string) error
 		DialOptions(addr string, opts options.Options) error
 		NewDialer(addr string, opts options.Options) (Dialer, error)
@@ -88,35 +75,44 @@ type (
 		Listen(addr string) error
 		ListenOptions(addr string, opts options.Options) error
 		NewListener(addr string, opts options.Options) (Listener, error)
+	}
 
+	// Connector controls socket's connections
+	Connector interface {
+		options.Options
+		ConnectorAction
 		Close()
-
 		RegisterPipeEventHandler(PipeEventHandler)
 		UnregisterPipeEventHandler(PipeEventHandler)
+	}
+
+	// SenderAction is sender's action
+	SenderAction interface {
+		SendTo(dest MsgPath, content []byte) error // for reply send
+		Send(content []byte) error                 // for initiative send one
+		SendAll(content []byte) error              // for initiative send all
+		SendMsg(msg *Message) error
 	}
 
 	// Sender controls socket's send.
 	Sender interface {
 		options.Options
-
 		AttachConnector(Connector)
-
-		SendTo(dest MsgPath, content []byte) error // for reply send
-		Send(content []byte) error                 // for initiative send
-		ForwardMsg(msg *Message) error             // for forward send
-
+		SenderAction
 		Close()
+	}
+
+	// ReceiverAction is receiver's action
+	ReceiverAction interface {
+		RecvMsg() (*Message, error)
+		Recv() ([]byte, error)
 	}
 
 	// Receiver controls socket's recv.
 	Receiver interface {
 		options.Options
-
 		AttachConnector(Connector)
-
-		RecvMsg() (*Message, error)
-		Recv() ([]byte, error)
-
+		ReceiverAction
 		Close()
 	}
 )
