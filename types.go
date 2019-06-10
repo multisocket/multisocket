@@ -1,6 +1,8 @@
 package multisocket
 
 import (
+	"time"
+
 	"github.com/webee/multisocket/options"
 )
 
@@ -11,7 +13,11 @@ type (
 		Sender() Sender
 		Receiver() Receiver
 
+		SetNegotiator(Negotiator)
 		ConnectorAction
+		GetPipe(id uint32) Pipe
+		ClosePipe(id uint32)
+
 		SenderAction
 		ReceiverAction
 
@@ -43,7 +49,9 @@ type (
 		RemoteAddress() string
 
 		Send(msgs ...[]byte) error
+		SendTimeout(deadline time.Duration, msgs ...[]byte) error
 		Recv() ([]byte, error)
+		RecvTimeout(deadline time.Duration) ([]byte, error)
 
 		Close()
 	}
@@ -66,6 +74,11 @@ const (
 )
 
 type (
+	// Negotiator is use for handshaking when adding pipe
+	Negotiator interface {
+		Negotiate(pipe Pipe) error
+	}
+
 	// ConnectorAction is connector's action
 	ConnectorAction interface {
 		Dial(addr string) error
@@ -75,15 +88,15 @@ type (
 		Listen(addr string) error
 		ListenOptions(addr string, opts options.Options) error
 		NewListener(addr string, opts options.Options) (Listener, error)
-
-		GetPipe(id uint32) Pipe
-		ClosePipe(id uint32)
 	}
 
 	// Connector controls socket's connections
 	Connector interface {
 		options.Options
+		SetNegotiator(Negotiator)
 		ConnectorAction
+		GetPipe(id uint32) Pipe
+		ClosePipe(id uint32)
 		Close()
 		RegisterPipeEventHandler(PipeEventHandler)
 		UnregisterPipeEventHandler(PipeEventHandler)
@@ -91,9 +104,9 @@ type (
 
 	// SenderAction is sender's action
 	SenderAction interface {
-		SendTo(dest MsgPath, content []byte) error // for reply send
-		Send(content []byte) error                 // for initiative send one
-		SendAll(content []byte) error              // for initiative send all
+		SendTo(dest MsgPath, content []byte, extras ...[]byte) error // for reply send
+		Send(content []byte, extras ...[]byte) error                 // for initiative send one
+		SendAll(content []byte, extras ...[]byte) error              // for initiative send all
 		SendMsg(msg *Message) error
 	}
 

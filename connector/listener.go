@@ -66,7 +66,7 @@ func (l *listener) serve() {
 			if l.isStopped() {
 				tc.Close()
 			} else {
-				l.parent.addPipe(newPipe(l.parent, tc, nil, l))
+				go l.parent.addPipe(newPipe(l.parent, tc, nil, l))
 			}
 		} else {
 			// Debounce a little bit, to avoid thrashing the CPU.

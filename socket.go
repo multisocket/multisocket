@@ -52,6 +52,10 @@ func (s *socket) attachConnector() {
 	s.attached = true
 }
 
+func (s *socket) SetNegotiator(negotiator Negotiator) {
+	s.connector.SetNegotiator(negotiator)
+}
+
 func (s *socket) Dial(addr string) error {
 	s.attachConnector()
 	return s.connector.Dial(addr)
@@ -90,28 +94,28 @@ func (s *socket) ClosePipe(id uint32) {
 	s.connector.ClosePipe(id)
 }
 
-func (s *socket) SendTo(dest MsgPath, content []byte) error {
+func (s *socket) SendTo(dest MsgPath, content []byte, extras ...[]byte) error {
 	if s.sender == nil {
 		return ErrOperationNotSupported
 	}
 
-	return s.sender.SendTo(dest, content)
+	return s.sender.SendTo(dest, content, extras...)
 }
 
-func (s *socket) Send(content []byte) error {
+func (s *socket) Send(content []byte, extras ...[]byte) error {
 	if s.sender == nil {
 		return ErrOperationNotSupported
 	}
 
-	return s.sender.Send(content)
+	return s.sender.Send(content, extras...)
 }
 
-func (s *socket) SendAll(content []byte) error {
+func (s *socket) SendAll(content []byte, extras ...[]byte) error {
 	if s.sender == nil {
 		return ErrOperationNotSupported
 	}
 
-	return s.sender.SendAll(content)
+	return s.sender.SendAll(content, extras...)
 }
 
 func (s *socket) SendMsg(msg *Message) error {
