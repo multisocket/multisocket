@@ -316,7 +316,7 @@ func (c *connector) Close() {
 		d.Close()
 	}
 
-	for p := range pipes {
+	for _, p := range pipes {
 		p.Close()
 	}
 }
