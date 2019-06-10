@@ -44,6 +44,7 @@ func newPipe(p multisocket.Pipe) *pipe {
 
 func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	var (
+		ok      bool
 		payload []byte
 		header  *multisocket.MsgHeader
 		source  multisocket.MsgPath
@@ -53,18 +54,28 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 		return
 	}
 
-	if header, err = NewHeaderFromBytes(payload); err != nil {
+	if header, err = newHeaderFromBytes(payload); err != nil {
 		return
 	}
 	headerSize := header.Size()
-	source = NewPathFromBytes(int(header.Hops), payload[headerSize:])
+	source = newPathFromBytes(int(header.Hops), payload[headerSize:])
 	sourceSize := source.Size()
-	dest = NewPathFromBytes(header.DestLength(), payload[headerSize+sourceSize:])
+	dest = newPathFromBytes(header.DestLength(), payload[headerSize+sourceSize:])
 	content := payload[headerSize+sourceSize+dest.Size():]
 
-	source = source.NewID(p.p.ID())
+	// update source, add current pipe id
+	source = source.AddID(p.p.ID())
 	header.Hops++
 	header.TTL--
+
+	// update destination, remove last pipe id
+	if _, dest, ok = dest.NextID(); !ok {
+		// anyway, msg arrived
+		header.Distance = 0
+	} else {
+		header.Distance = dest.Length()
+	}
+
 	msg = &multisocket.Message{
 		Header:      header,
 		Source:      source,

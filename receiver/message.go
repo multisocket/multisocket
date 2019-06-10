@@ -7,12 +7,7 @@ import (
 	"github.com/webee/multisocket"
 )
 
-const (
-	defaultMsgTTL = 16
-)
-
-// NewHeaderFromBytes create a msg header from bytes.
-func NewHeaderFromBytes(payload []byte) (header *multisocket.MsgHeader, err error) {
+func newHeaderFromBytes(payload []byte) (header *multisocket.MsgHeader, err error) {
 	header = new(multisocket.MsgHeader)
 	if len(payload) < header.Size() {
 		err = ErrRecvInvalidData
@@ -25,7 +20,6 @@ func NewHeaderFromBytes(payload []byte) (header *multisocket.MsgHeader, err erro
 	return
 }
 
-// NewPathFromBytes create a path from bytes.
-func NewPathFromBytes(n int, payload []byte) multisocket.MsgPath {
+func newPathFromBytes(n int, payload []byte) multisocket.MsgPath {
 	return multisocket.MsgPath(append([]byte{}, payload[:4*n]...))
 }

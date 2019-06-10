@@ -4,24 +4,13 @@ import (
 	"github.com/webee/multisocket"
 )
 
-const (
-	defaultMsgTTL      = 16
-	defaultMsgDistance = 0xff
-)
-
-// NewHeader create a message header.
-func NewHeader() *multisocket.MsgHeader {
-	return &multisocket.MsgHeader{TTL: defaultMsgTTL, Hops: 0, Distance: defaultMsgDistance}
-}
-
-// NewMessage create a message.
-func NewMessage(dest multisocket.MsgPath, content []byte) *multisocket.Message {
-	header := NewHeader()
-	if dest != nil {
+func newMessage(sendType uint8, ttl uint8, dest multisocket.MsgPath, content []byte) *multisocket.Message {
+	header := &multisocket.MsgHeader{SendType: sendType, TTL: defaultMsgTTL, Hops: 0}
+	if header.SendType == multisocket.SendTypeReply {
 		header.Distance = dest.Length()
 	}
 	return &multisocket.Message{
-		Header:      NewHeader(),
+		Header:      header,
 		Destination: dest,
 		Content:     content,
 	}
