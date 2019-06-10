@@ -197,9 +197,11 @@ func (s *sender) resendMsg(msg *Message) {
 }
 
 func (s *sender) run(p *pipe) {
-	log.WithField("domain", "sender").
-		WithFields(log.Fields{"id": p.p.ID()}).
-		Debug("pipe start run")
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "sender").
+			WithFields(log.Fields{"id": p.p.ID()}).
+			Debug("pipe start run")
+	}
 
 	var (
 		err error
@@ -227,14 +229,16 @@ SENDING:
 		}
 	}
 	s.remPipe(p.p.ID())
-	log.WithField("domain", "sender").
-		WithFields(log.Fields{"id": p.p.ID()}).
-		Debug("pipe stopped run")
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "sender").
+			WithFields(log.Fields{"id": p.p.ID()}).
+			Debug("pipe stopped run")
+	}
 }
 
-func (s *sender) newMsg(sendType uint8, dest multisocket.MsgPath, content []byte) (msg *Message) {
+func (s *sender) newMsg(sendType uint8, dest multisocket.MsgPath, content []byte, extras [][]byte) (msg *Message) {
 	ttl := OptionTTL.Value(s.GetOptionDefault(OptionTTL, defaultMsgTTL))
-	return newMessage(sendType, ttl, dest, content)
+	return newMessage(sendType, ttl, dest, content, extras)
 }
 
 func (s *sender) sendTo(msg *Message) (err error) {
@@ -264,16 +268,16 @@ func (s *sender) sendTo(msg *Message) (err error) {
 	return s.doPushMsg(msg, p.sendq, p.closedq)
 }
 
-func (s *sender) SendTo(dest multisocket.MsgPath, content []byte) (err error) {
-	return s.sendTo(s.newMsg(multisocket.SendTypeReply, dest, content))
+func (s *sender) SendTo(dest multisocket.MsgPath, content []byte, extras ...[]byte) (err error) {
+	return s.sendTo(s.newMsg(multisocket.SendTypeReply, dest, content, extras))
 }
 
-func (s *sender) Send(content []byte) (err error) {
-	return s.SendMsg(s.newMsg(multisocket.SendTypeToOne, nil, content))
+func (s *sender) Send(content []byte, extras ...[]byte) (err error) {
+	return s.SendMsg(s.newMsg(multisocket.SendTypeToOne, nil, content, extras))
 }
 
-func (s *sender) SendAll(content []byte) (err error) {
-	return s.SendMsg(s.newMsg(multisocket.SendTypeToAll, nil, content))
+func (s *sender) SendAll(content []byte, extras ...[]byte) (err error) {
+	return s.SendMsg(s.newMsg(multisocket.SendTypeToAll, nil, content, extras))
 }
 
 func (s *sender) SendMsg(msg *Message) error {
