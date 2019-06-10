@@ -60,24 +60,26 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	headerSize := header.Size()
 
 	source = newPathFromBytes(int(header.Hops), payload[headerSize:])
-	// update source, add current pipe id
-	source = source.AddID(p.p.ID())
-	header.Hops++
-	header.TTL--
 	sourceSize := source.Size()
 
 	if header.SendType == multisocket.SendTypeReply {
 		dest = newPathFromBytes(header.DestLength(), payload[headerSize+sourceSize:])
-		// update destination, remove last pipe id
-		if _, dest, ok = dest.NextID(); !ok {
-			// anyway, msg arrived
-			header.Distance = 0
-		} else {
-			header.Distance = dest.Length()
-		}
 	}
 
 	content := payload[headerSize+sourceSize+dest.Size():]
+
+	// update source, add current pipe id
+	source = source.AddID(p.p.ID())
+	header.Hops++
+	header.TTL--
+
+	// update destination, remove last pipe id
+	if _, dest, ok = dest.NextID(); !ok {
+		// anyway, msg arrived
+		header.Distance = 0
+	} else {
+		header.Distance = dest.Length()
+	}
 
 	msg = &multisocket.Message{
 		Header:      header,
@@ -168,9 +170,11 @@ func (r *receiver) closePipe(p *pipe) {
 }
 
 func (r *receiver) run(p *pipe) {
-	log.WithField("domain", "receiver").
-		WithFields(log.Fields{"id": p.p.ID()}).
-		Debug("pipe start run")
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "receiver").
+			WithFields(log.Fields{"id": p.p.ID()}).
+			Debug("pipe start run")
+	}
 	var (
 		err error
 		msg *multisocket.Message
@@ -197,9 +201,11 @@ RECVING:
 		}
 	}
 	r.remPipe(p.p.ID())
-	log.WithField("domain", "receiver").
-		WithFields(log.Fields{"id": p.p.ID()}).
-		Debug("pipe stopped run")
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "receiver").
+			WithFields(log.Fields{"id": p.p.ID()}).
+			Debug("pipe stopped run")
+	}
 }
 
 func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {

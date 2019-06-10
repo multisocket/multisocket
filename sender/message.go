@@ -4,7 +4,7 @@ import (
 	"github.com/webee/multisocket"
 )
 
-func newMessage(sendType uint8, ttl uint8, dest multisocket.MsgPath, content []byte) *multisocket.Message {
+func newMessage(sendType uint8, ttl uint8, dest multisocket.MsgPath, content []byte, extras [][]byte) *multisocket.Message {
 	header := &multisocket.MsgHeader{SendType: sendType, TTL: defaultMsgTTL, Hops: 0}
 	if header.SendType == multisocket.SendTypeReply {
 		header.Distance = dest.Length()
@@ -13,5 +13,6 @@ func newMessage(sendType uint8, ttl uint8, dest multisocket.MsgPath, content []b
 		Header:      header,
 		Destination: dest,
 		Content:     content,
+		Extras:      extras,
 	}
 }
