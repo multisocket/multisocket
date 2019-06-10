@@ -34,14 +34,25 @@ func newDialer(parent *connector, td transport.Dialer) *dialer {
 	opts := options.NewOptionsWithUpDownStreamsAndAccepts(nil, td,
 		DialerOptionMinReconnectTime,
 		DialerOptionMaxReconnectTime,
-		DialerOptionDialAsync).
-		WithOption(DialerOptionMinReconnectTime, defaultMinReconnTime).
-		WithOption(DialerOptionMaxReconnectTime, defaultMaxReconnTime)
+		DialerOptionDialAsync)
 	return &dialer{
 		Options: opts,
 		parent:  parent,
 		d:       td,
 	}
+}
+
+//options
+func (d *dialer) minReconnectTime() time.Duration {
+	return DialerOptionMinReconnectTime.Value(d.GetOptionDefault(DialerOptionMinReconnectTime, defaultMinReconnTime))
+}
+
+func (d *dialer) maxReconnectTime() time.Duration {
+	return DialerOptionMaxReconnectTime.Value(d.GetOptionDefault(DialerOptionMaxReconnectTime, defaultMaxReconnTime))
+}
+
+func (d *dialer) dialAsync() bool {
+	return DialerOptionDialAsync.Value(d.GetOptionDefault(DialerOptionDialAsync, defaultDialAsync))
 }
 
 func (d *dialer) Dial() error {
@@ -56,9 +67,9 @@ func (d *dialer) Dial() error {
 	}
 
 	d.active = true
-	d.reconnTime = DialerOptionMinReconnectTime.Value(d.GetOptionDefault(DialerOptionMinReconnectTime, defaultMinReconnTime))
+	d.reconnTime = d.minReconnectTime()
 	d.Unlock()
-	async := DialerOptionDialAsync.Value(d.GetOptionDefault(DialerOptionDialAsync, defaultDialAsync))
+	async := d.dialAsync()
 	if async {
 		go d.redial()
 		return nil
@@ -136,7 +147,7 @@ func (d *dialer) dial(redial bool) error {
 		d.Lock()
 		d.dialing = false
 		d.connected = true
-		d.reconnTime = DialerOptionMinReconnectTime.Value(d.GetOptionDefault(DialerOptionMinReconnectTime, defaultMinReconnTime))
+		d.reconnTime = d.minReconnectTime()
 		d.Unlock()
 		return nil
 	}
@@ -169,7 +180,7 @@ func (d *dialer) dial(redial bool) error {
 	actfact := rand.Float64()*(maxfact-minfact) + minfact
 	rtime := d.reconnTime
 	d.reconnTime = time.Duration(actfact * float64(d.reconnTime))
-	reconnMaxTime := DialerOptionMaxReconnectTime.Value(d.GetOptionDefault(DialerOptionMaxReconnectTime, defaultMaxReconnTime))
+	reconnMaxTime := d.maxReconnectTime()
 	if reconnMaxTime != 0 {
 		if d.reconnTime > reconnMaxTime {
 			d.reconnTime = reconnMaxTime
