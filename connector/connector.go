@@ -14,6 +14,7 @@ type (
 	connector struct {
 		options.Options
 		sync.Mutex
+		negotiator        multisocket.Negotiator
 		limit             int
 		dialers           []*dialer
 		listeners         []*listener
@@ -53,9 +54,11 @@ func NewWithLimitAndOptions(limit int, ovs ...*options.OptionValue) multisocket.
 	for _, ov := range ovs {
 		c.SetOption(ov.Option, ov.Value)
 	}
-	log.WithField("domain", "connector").
-		WithField("limit", c.limit).
-		Debug("create")
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "connector").
+			WithField("limit", c.limit).
+			Debug("create")
+	}
 	return c
 }
 
@@ -65,10 +68,12 @@ func (c *connector) onOptionChange(opt options.Option, oldVal, newVal interface{
 		c.Lock()
 		oldLimit := c.limit
 		c.limit = OptionConnLimit.Value(newVal)
-		log.WithField("domain", "connector").
-			WithField("oldLimit", oldLimit).
-			WithField("newLimit", c.limit).
-			Debug("change limit")
+		if log.IsLevelEnabled(log.DebugLevel) {
+			log.WithField("domain", "connector").
+				WithField("oldLimit", oldLimit).
+				WithField("newLimit", c.limit).
+				Debug("change limit")
+		}
 		c.checkLimit(true)
 		c.Unlock()
 	}
@@ -85,11 +90,12 @@ func (c *connector) checkLimit(checkNoLimit bool) {
 		for _, d := range c.dialers {
 			d.start()
 		}
-		log.WithField("domain", "connector").
-			WithField("limit", c.limit).
-			WithField("pipes", len(c.pipes)).
-			WithField("action", "start").
-			Debug("check limit")
+		if log.IsLevelEnabled(log.DebugLevel) {
+			log.WithField("domain", "connector").
+				WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
+				WithField("action", "start").
+				Debug("check limit")
+		}
 	} else if c.limit != -1 && c.limit > len(c.pipes) {
 		// below limit
 		// start connecting
@@ -100,11 +106,12 @@ func (c *connector) checkLimit(checkNoLimit bool) {
 		for _, d := range c.dialers {
 			d.start()
 		}
-		log.WithField("domain", "connector").
-			WithField("limit", c.limit).
-			WithField("pipes", len(c.pipes)).
-			WithField("action", "start").
-			Debug("check limit")
+		if log.IsLevelEnabled(log.DebugLevel) {
+			log.WithField("domain", "connector").
+				WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
+				WithField("action", "start").
+				Debug("check limit")
+		}
 	} else if c.limit != -1 && c.limit <= len(c.pipes) {
 		// check exceed limit
 		// stop connecting
@@ -115,11 +122,12 @@ func (c *connector) checkLimit(checkNoLimit bool) {
 		for _, d := range c.dialers {
 			d.stop()
 		}
-		log.WithField("domain", "connector").
-			WithField("limit", c.limit).
-			WithField("pipes", len(c.pipes)).
-			WithField("action", "stop").
-			Debug("check limit")
+		if log.IsLevelEnabled(log.DebugLevel) {
+			log.WithField("domain", "connector").
+				WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
+				WithField("action", "stop").
+				Debug("check limit")
+		}
 	}
 }
 
@@ -127,12 +135,28 @@ func (c *connector) addPipe(p *pipe) {
 	c.Lock()
 	defer c.Unlock()
 
+	if c.negotiator != nil {
+		// negotiating
+		if err := c.negotiator.Negotiate(p); err != nil {
+			if log.IsLevelEnabled(log.DebugLevel) {
+				log.WithField("domain", "connector").
+					WithFields(log.Fields{"id": p.ID(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
+					WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
+					WithField("action", "netotiating").
+					WithError(err).
+					Debug("add pipe")
+			}
+			return
+		}
+	}
+
 	if c.limit == -1 || c.limit > len(c.pipes) {
-		log.WithField("domain", "connector").
-			WithFields(log.Fields{"id": p.ID(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
-			WithField("limit", c.limit).
-			WithField("pipes", len(c.pipes)).
-			Debug("add pipe")
+		if log.IsLevelEnabled(log.DebugLevel) {
+			log.WithField("domain", "connector").
+				WithFields(log.Fields{"id": p.ID(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
+				WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
+				Debug("add pipe")
+		}
 
 		c.pipes[p.ID()] = p
 		for peh := range c.pipeEventHandlers {
@@ -141,11 +165,12 @@ func (c *connector) addPipe(p *pipe) {
 
 		c.checkLimit(false)
 	} else {
-		log.WithField("domain", "connector").
-			WithFields(log.Fields{"id": p.ID(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
-			WithField("limit", c.limit).
-			WithField("pipes", len(c.pipes)).
-			Debug("drop pipe")
+		if log.IsLevelEnabled(log.DebugLevel) {
+			log.WithField("domain", "connector").
+				WithFields(log.Fields{"id": p.ID(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
+				WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
+				Debug("drop pipe")
+		}
 
 		go p.Close()
 	}
@@ -171,6 +196,12 @@ func (c *connector) remPipe(p *pipe) {
 	c.Lock()
 	defer c.Unlock()
 	c.checkLimit(false)
+}
+
+func (c *connector) SetNegotiator(negotiator multisocket.Negotiator) {
+	c.Lock()
+	c.negotiator = negotiator
+	c.Unlock()
 }
 
 func (c *connector) Dial(addr string) error {

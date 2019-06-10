@@ -102,7 +102,11 @@ func (p *pipe) Close() {
 }
 
 func (p *pipe) Send(msgs ...[]byte) (err error) {
-	if p.sendDeadline <= 0 {
+	return p.SendTimeout(p.sendDeadline, msgs...)
+}
+
+func (p *pipe) SendTimeout(deadline time.Duration, msgs ...[]byte) (err error) {
+	if deadline <= 0 {
 		if err = p.c.Send(msgs...); err != nil {
 			// NOTE: close on any error
 			go p.Close()
@@ -111,7 +115,7 @@ func (p *pipe) Send(msgs ...[]byte) (err error) {
 		return
 	}
 
-	tq := time.After(p.sendDeadline)
+	tq := time.After(deadline)
 	done := make(chan struct{})
 
 	go func() {
@@ -131,7 +135,11 @@ func (p *pipe) Send(msgs ...[]byte) (err error) {
 }
 
 func (p *pipe) Recv() (msg []byte, err error) {
-	if p.recvDeadline <= 0 {
+	return p.RecvTimeout(p.recvDeadline)
+}
+
+func (p *pipe) RecvTimeout(deadline time.Duration) (msg []byte, err error) {
+	if deadline <= 0 {
 		if msg, err = p.c.Recv(); err != nil {
 			// NOTE: close on any error
 			go p.Close()
@@ -140,7 +148,7 @@ func (p *pipe) Recv() (msg []byte, err error) {
 		return
 	}
 
-	tq := time.After(p.recvDeadline)
+	tq := time.After(deadline)
 	done := make(chan struct{})
 	go func() {
 		if msg, err = p.c.Recv(); err != nil {
