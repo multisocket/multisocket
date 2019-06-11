@@ -24,6 +24,7 @@ type (
 		Source      MsgPath
 		Destination MsgPath
 		Content     []byte
+		Extras      [][]byte
 	}
 )
 
@@ -100,7 +101,16 @@ func (src MsgPath) NextID() (id uint32, source MsgPath, ok bool) {
 
 // Encode encode msg to bytes.
 func (msg *Message) Encode() [][]byte {
-	return [][]byte{msg.Header.Encode(), msg.Source.Encode(), msg.Destination.Encode(), msg.Content}
+	res := make([][]byte, 4+len(msg.Extras))
+	res[0] = msg.Header.Encode()
+	res[1] = msg.Source.Encode()
+	res[2] = msg.Destination.Encode()
+	res[3] = msg.Content
+	for i := 4; i < len(res); i++ {
+		res[i] = msg.Extras[i-4]
+	}
+
+	return res
 }
 
 // HasDestination check if msg has a destination

@@ -26,8 +26,7 @@ type (
 		multisocket.ConnectorAction
 
 		// actions
-		WithHandler(handler Handler) Rep
-		WithRunner(runner Runner) Rep
+		SetRunner(runner Runner)
 		Start()
 		Close()
 	}
@@ -44,30 +43,20 @@ type (
 )
 
 // New create a Rep protocol instance
-func New() Rep {
+func New(handler Handler) Rep {
 	return &rep{
-		Socket: multisocket.New(connector.New(), sender.New(), receiver.New()),
+		Socket:  multisocket.New(connector.New(), sender.New(), receiver.New()),
+		handler: handler,
 	}
 }
 
-func (r *rep) WithHandler(handler Handler) Rep {
+func (r *rep) SetRunner(runner Runner) {
 	r.Lock()
 	defer r.Unlock()
 	if r.started {
-		return r
-	}
-	r.handler = handler
-	return r
-}
-
-func (r *rep) WithRunner(runner Runner) Rep {
-	r.Lock()
-	defer r.Unlock()
-	if r.started {
-		return r
+		return
 	}
 	r.runner = runner
-	return r
 }
 
 func (r *rep) Start() {
