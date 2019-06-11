@@ -9,8 +9,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/webee/multisocket/protocol/rep"
-	"github.com/webee/multisocket/protocol/req"
+	"github.com/webee/multisocket/protocol/reqrep"
 	_ "github.com/webee/multisocket/transport/all"
 )
 
@@ -38,15 +37,15 @@ func main() {
 }
 
 func server(t, addr string, n int) {
-	proto := rep.New(reqHandler(n))
-	proto.Start()
+	rep := reqrep.NewRep(reqHandler(n))
+	rep.Start()
 	switch t {
 	case "dial":
-		if err := proto.Dial(addr); err != nil {
+		if err := rep.Dial(addr); err != nil {
 			log.WithField("err", err).Panicf("dial")
 		}
 	default:
-		if err := proto.Listen(addr); err != nil {
+		if err := rep.Listen(addr); err != nil {
 			log.WithField("err", err).Panicf("listen")
 		}
 	}
@@ -55,14 +54,14 @@ func server(t, addr string, n int) {
 }
 
 func client(t, addr string, name string) {
-	proto := req.New()
+	req := reqrep.NewReq()
 	switch t {
 	case "listen":
-		if err := proto.Listen(addr); err != nil {
+		if err := req.Listen(addr); err != nil {
 			log.WithField("err", err).Panicf("listen")
 		}
 	default:
-		if err := proto.Dial(addr); err != nil {
+		if err := req.Dial(addr); err != nil {
 			log.WithField("err", err).Panicf("dial")
 		}
 	}
@@ -70,8 +69,9 @@ func client(t, addr string, name string) {
 	idx := 0
 	for {
 		log.WithField("id", idx).Infof("request")
-		if reply, err := proto.Request([]byte(fmt.Sprintf("%s#%d", name, idx))); err != nil {
-			log.WithError(err).Errorf("request")
+		if reply, err := req.Request([]byte(fmt.Sprintf("%s#%d", name, idx))); err != nil {
+			log.WithError(err).WithField("id", idx).Errorf("request")
+			time.Sleep(1 * time.Second)
 		} else {
 			fmt.Printf("%s\n", string(reply))
 		}

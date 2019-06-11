@@ -14,6 +14,7 @@ func (e err) Error() string {
 const (
 	ErrClosed          = multisocket.ErrClosed
 	ErrTimeout         = multisocket.ErrTimeout
+	ErrMsgDropped      = err("message dropped")
 	ErrBadDestination  = err("bad destination")
 	ErrPipeNotFound    = err("pipe not found")
 	ErrInvalidSendType = err("invalid send type")

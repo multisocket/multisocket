@@ -1,10 +1,12 @@
-package req
+package reqrep
 
 import (
 	"encoding/binary"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/webee/multisocket/options"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
@@ -14,26 +16,6 @@ import (
 )
 
 type (
-	// Request is a request object
-	Request struct {
-		r     *req
-		ID    uint32
-		Err   error
-		Reply []byte
-		Done  chan *Request
-	}
-
-	// Req is the Req protocol
-	Req interface {
-		multisocket.ConnectorAction
-
-		// actions
-		Request(content []byte) ([]byte, error)
-		ReqeustTimeout(t time.Duration, content []byte) ([]byte, error)
-		ReqeustAsync(content []byte) *Request
-		Close()
-	}
-
 	req struct {
 		multisocket.Socket
 		timeout time.Duration
@@ -50,15 +32,17 @@ const (
 	defaultTimeout = time.Second * 5
 )
 
-// New create a Req protocol instance
-func New() Req {
-	return NewWithTimeout(defaultTimeout)
+// NewReq create a Req protocol instance
+func NewReq() Req {
+	return NewReqWithTimeout(defaultTimeout)
 }
 
-// NewWithTimeout create a Req protocol instance with request timeout
-func NewWithTimeout(timeout time.Duration) Req {
+// NewReqWithTimeout create a Req protocol instance with request timeout
+func NewReqWithTimeout(timeout time.Duration) Req {
 	req := &req{
-		Socket:   multisocket.New(connector.New(), sender.New(), receiver.New()),
+		Socket: multisocket.New(connector.New(),
+			sender.NewWithOptions(options.NewOptionValue(sender.OptionSendBestEffort, true)),
+			receiver.New()),
 		timeout:  timeout,
 		reqID:    uint32(time.Now().UnixNano()), // quasi-random
 		requests: make(map[uint32]*Request),
@@ -82,25 +66,25 @@ func (r *req) run() {
 		if msg, err = r.RecvMsg(); err != nil {
 			break
 		}
-		id := binary.BigEndian.Uint32(msg.Content)
+		requestID := binary.BigEndian.Uint32(msg.Content)
 		if log.IsLevelEnabled(log.TraceLevel) {
-			log.WithField("requestID", id).WithField("action", "start").Trace("recv")
+			log.WithField("requestID", requestID).WithField("action", "start").Trace("recv")
 		}
 		r.Lock()
-		if request, ok = r.requests[id]; !ok {
+		if request, ok = r.requests[requestID]; !ok {
 			r.Unlock()
 			if log.IsLevelEnabled(log.DebugLevel) {
-				log.WithField("requestID", id).WithField("action", "miss").Debug("recv")
+				log.WithField("requestID", requestID).WithField("action", "miss").Debug("recv")
 			}
 			continue
 		}
-		delete(r.requests, id)
+		delete(r.requests, requestID)
 		r.Unlock()
 
 		request.Reply = msg.Content[4:]
 		request.done(nil)
 		if log.IsLevelEnabled(log.TraceLevel) {
-			log.WithField("requestID", id).WithField("action", "done").Trace("recv")
+			log.WithField("requestID", requestID).WithField("action", "done").Trace("recv")
 		}
 	}
 }
@@ -116,7 +100,7 @@ func (r *req) Request(content []byte) ([]byte, error) {
 func (r *req) ReqeustTimeout(t time.Duration, content []byte) ([]byte, error) {
 	request := r.ReqeustAsync(content)
 	select {
-	case request = <-r.ReqeustAsync(content).Done:
+	case request = <-request.Done:
 		return request.Reply, request.Err
 	case <-time.After(t):
 		request.Cancel()
@@ -125,24 +109,24 @@ func (r *req) ReqeustTimeout(t time.Duration, content []byte) ([]byte, error) {
 }
 
 func (r *req) ReqeustAsync(content []byte) *Request {
+	requestID := r.nextID()
 	request := &Request{
-		r:    r,
-		ID:   r.nextID(),
-		Done: make(chan *Request, 2),
+		Cancel: r.cancelRequest(requestID),
+		Done:   make(chan *Request, 2),
 	}
 	r.Lock()
-	r.requests[request.ID] = request
+	r.requests[requestID] = request
 	r.Unlock()
 	if log.IsLevelEnabled(log.TraceLevel) {
-		log.WithField("requestID", request.ID).
+		log.WithField("requestID", requestID).
 			WithField("action", "start").Trace("request")
 	}
 
 	idBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(idBuf, request.ID)
+	binary.BigEndian.PutUint32(idBuf, requestID)
 	if err := r.Send(idBuf, content); err != nil {
 		if log.IsLevelEnabled(log.DebugLevel) {
-			log.WithError(err).WithField("requestID", request.ID).Debug("request")
+			log.WithError(err).WithField("requestID", requestID).Debug("request")
 		}
 		request.Cancel()
 		request.done(err)
@@ -159,12 +143,13 @@ func (req *Request) done(err error) {
 	}
 }
 
-// Cancel cancel this request
-func (req *Request) Cancel() {
-	r := req.r
-	r.Lock()
-	delete(r.requests, req.ID)
-	r.Unlock()
+func (r *req) cancelRequest(requestID uint32) func() {
+	// Cancel cancel this request
+	return func() {
+		r.Lock()
+		delete(r.requests, requestID)
+		r.Unlock()
+	}
 }
 
 func (r *req) Close() {

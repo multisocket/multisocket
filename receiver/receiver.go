@@ -28,7 +28,7 @@ type (
 )
 
 const (
-	defaultRecvQueueSize = uint16(8)
+	defaultRecvQueueSize = uint16(64)
 )
 
 var (

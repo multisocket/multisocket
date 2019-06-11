@@ -1,4 +1,4 @@
-package rep
+package reqrep
 
 import (
 	"encoding/binary"
@@ -12,25 +12,6 @@ import (
 )
 
 type (
-	// Handler is request handler
-	Handler interface {
-		Handle(req []byte) (rep []byte)
-	}
-	// Runner is handler runner
-	Runner interface {
-		Run(func())
-	}
-
-	// Rep is the Rep protocol
-	Rep interface {
-		multisocket.ConnectorAction
-
-		// actions
-		SetRunner(runner Runner)
-		Start()
-		Close()
-	}
-
 	rep struct {
 		multisocket.Socket
 		handler Handler
@@ -42,8 +23,8 @@ type (
 	}
 )
 
-// New create a Rep protocol instance
-func New(handler Handler) Rep {
+// NewRep create a Rep protocol instance
+func NewRep(handler Handler) Rep {
 	return &rep{
 		Socket:  multisocket.New(connector.New(), sender.New(), receiver.New()),
 		handler: handler,

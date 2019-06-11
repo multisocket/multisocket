@@ -42,7 +42,7 @@ type (
 
 const (
 	defaultMsgTTL        = multisocket.DefaultMsgTTL
-	defaultSendQueueSize = uint16(8)
+	defaultSendQueueSize = uint16(64)
 )
 
 var (
@@ -81,7 +81,7 @@ func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan st
 			return nil
 		default:
 			// drop msg
-			return nil
+			return ErrMsgDropped
 		}
 	}
 

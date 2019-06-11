@@ -83,7 +83,7 @@ func server(t, addr, rawAddr string) {
 		}
 	}
 	go worker(0)
-	// go worker(1)
+	go worker(1)
 
 	setupSignal()
 }
