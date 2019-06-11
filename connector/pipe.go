@@ -101,13 +101,13 @@ func (p *pipe) Close() {
 	return
 }
 
-func (p *pipe) Send(msgs ...[]byte) (err error) {
-	return p.SendTimeout(p.sendDeadline, msgs...)
+func (p *pipe) Send(msg []byte, extras ...[]byte) (err error) {
+	return p.SendTimeout(p.sendDeadline, msg, extras...)
 }
 
-func (p *pipe) SendTimeout(deadline time.Duration, msgs ...[]byte) (err error) {
+func (p *pipe) SendTimeout(deadline time.Duration, msg []byte, extras ...[]byte) (err error) {
 	if deadline <= 0 {
-		if err = p.c.Send(msgs...); err != nil {
+		if err = p.c.Send(msg, extras...); err != nil {
 			// NOTE: close on any error
 			go p.Close()
 			err = ErrClosed
@@ -119,7 +119,7 @@ func (p *pipe) SendTimeout(deadline time.Duration, msgs ...[]byte) (err error) {
 	done := make(chan struct{})
 
 	go func() {
-		if err = p.c.Send(msgs...); err != nil {
+		if err = p.c.Send(msg, extras...); err != nil {
 			// NOTE: close on any error
 			go p.Close()
 			err = ErrClosed

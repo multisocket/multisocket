@@ -29,12 +29,12 @@ func init() {
 
 func main() {
 	// client("tcp://127.0.0.1:30001", "webee")
-	if len(os.Args) > 2 && os.Args[1] == "server" {
-		server(os.Args[2])
+	if len(os.Args) > 3 && os.Args[1] == "server" {
+		server(os.Args[2], os.Args[3])
 		os.Exit(0)
 	}
-	if len(os.Args) > 3 && os.Args[1] == "client" {
-		client(os.Args[2], os.Args[3])
+	if len(os.Args) > 4 && os.Args[1] == "client" {
+		client(os.Args[2], os.Args[3], os.Args[4])
 		os.Exit(0)
 	}
 	fmt.Fprintf(os.Stderr,
@@ -42,11 +42,18 @@ func main() {
 	os.Exit(1)
 }
 
-func server(addr string) {
+func server(t, addr string) {
 	sock := multisocket.New(connector.New(), sender.New(), receiver.New())
 
-	if err := sock.Listen(addr); err != nil {
-		log.WithField("err", err).Panicf("listen")
+	switch t {
+	case "dial":
+		if err := sock.Dial(addr); err != nil {
+			log.WithField("err", err).Panicf("dial")
+		}
+	default:
+		if err := sock.Listen(addr); err != nil {
+			log.WithField("err", err).Panicf("listen")
+		}
 	}
 
 	worker := func(n int) {
@@ -67,39 +74,46 @@ func server(addr string) {
 		}
 	}
 	go worker(0)
-	go worker(1)
+	// go worker(1)
 
 	setupSignal()
 }
 
-func client(addr string, name string) {
+func client(t, addr string, name string) {
 	var (
 		err     error
 		content []byte
 	)
 
 	sock := multisocket.New(connector.New(),
-		sender.NewSendOneWithOptions(
+		sender.NewWithOptions(
 			options.NewOptionValue(sender.OptionSendQueueSize, 11),
 		),
 		receiver.New())
-	if err = sock.Sender().SetOption(sender.OptionTTL, 2); err != nil {
+	if err = sock.Sender().SetOption(sender.OptionTTL, 3); err != nil {
 		log.WithField("err", err).Panic("set sender option")
 	}
 
-	if err := sock.Dial(addr); err != nil {
-		log.WithField("err", err).Panicf("dial")
+	switch t {
+	case "listen":
+		if err := sock.Listen(addr); err != nil {
+			log.WithField("err", err).Panicf("listen")
+		}
+	default:
+		if err := sock.Dial(addr); err != nil {
+			log.WithField("err", err).Panicf("dial")
+		}
 	}
 
 	go func() {
-		t := 0
+		idx := 0
 		for {
-			if err = sock.Send([]byte(fmt.Sprintf("%s#%d", name, t))); err != nil {
+			if err = sock.Send([]byte(fmt.Sprintf("%s#%d", name, idx))); err != nil {
 				log.WithField("err", err).Errorf("send")
 			}
-			log.WithField("id", t).Infof("send")
-			time.Sleep(100 * time.Millisecond)
-			t++
+			log.WithField("id", idx).Infof("send")
+			time.Sleep(1000 * time.Millisecond)
+			idx++
 		}
 	}()
 

@@ -9,7 +9,7 @@ type (
 	Connection interface {
 		Transport() Transport
 
-		Send(...[]byte) error
+		Send(msg []byte, extras ...[]byte) error
 		Recv() ([]byte, error)
 
 		Close() error

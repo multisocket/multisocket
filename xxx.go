@@ -1,0 +1,4 @@
+package multisocket
+
+func init() {
+}
