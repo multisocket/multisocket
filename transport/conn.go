@@ -13,6 +13,7 @@ import (
 // connection implements the Connection interface on top of net.Conn.
 type connection struct {
 	transport Transport
+	raw       bool
 	c         net.Conn
 	maxrx     uint32
 
@@ -22,6 +23,10 @@ type connection struct {
 
 func (conn *connection) Transport() Transport {
 	return conn.transport
+}
+
+func (conn *connection) IsRaw() bool {
+	return conn.raw
 }
 
 // Recv implements the TranPipe Recv method.  The message received is expected
@@ -95,8 +100,13 @@ func (conn *connection) RemoteAddress() string {
 
 // NewConnection allocates a new Connection using the supplied net.Conn
 func NewConnection(transport Transport, c net.Conn, opts options.Options) (Connection, error) {
+	if OptionConnRawMode.Value(opts.GetOptionDefault(OptionConnRawMode, false)) {
+		return NewRawConnection(transport, c, opts)
+	}
+
 	conn := &connection{
 		transport: transport,
+		raw:       false,
 		c:         c,
 	}
 

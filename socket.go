@@ -39,8 +39,8 @@ func (s *socket) Receiver() Receiver {
 
 func (s *socket) attachConnector() {
 	s.Lock()
+	defer s.Unlock()
 	if s.attached {
-		s.Unlock()
 		return
 	}
 	if s.sender != nil {

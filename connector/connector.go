@@ -292,19 +292,18 @@ func (c *connector) NewListener(addr string, opts options.Options) (l multisocke
 	}
 	tl.SetOption(transport.OptionMaxRecvMsgSize, defaultMaxRxMsgSize)
 
-	for _, ov := range opts.OptionValues() {
-		if err = tl.SetOption(ov.Option, ov.Value); err != nil {
-			tl.Close()
-			return
-		}
-	}
-
 	xl := newListener(c, tl)
 	if c.limit != -1 && c.limit <= len(c.pipes) {
 		// exceed limit
 		xl.stop()
 	}
 	l = xl
+	for _, ov := range opts.OptionValues() {
+		if err = l.SetOption(ov.Option, ov.Value); err != nil {
+			tl.Close()
+			return
+		}
+	}
 
 	c.listeners = append(c.listeners, xl)
 

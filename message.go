@@ -6,6 +6,11 @@ import (
 	"unsafe"
 )
 
+const (
+	// DefaultMsgTTL is default msg ttl
+	DefaultMsgTTL = uint8(16)
+)
+
 type (
 	// MsgHeader message meta data
 	MsgHeader struct {

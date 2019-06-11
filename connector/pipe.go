@@ -82,6 +82,10 @@ func (p *pipe) RemoteAddress() string {
 	return p.c.RemoteAddress()
 }
 
+func (p *pipe) IsRaw() bool {
+	return p.c.IsRaw()
+}
+
 func (p *pipe) Close() {
 	p.Lock()
 	if p.closed {

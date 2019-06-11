@@ -7,6 +7,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/webee/multisocket/transport"
+
 	"github.com/webee/multisocket/options"
 
 	log "github.com/sirupsen/logrus"
@@ -28,9 +30,10 @@ func init() {
 }
 
 func main() {
+	// server("listen", "tcp://127.0.0.1:30001", "tcp://127.0.0.1:30002")
 	// client("tcp://127.0.0.1:30001", "webee")
-	if len(os.Args) > 3 && os.Args[1] == "server" {
-		server(os.Args[2], os.Args[3])
+	if len(os.Args) > 4 && os.Args[1] == "server" {
+		server(os.Args[2], os.Args[3], os.Args[4])
 		os.Exit(0)
 	}
 	if len(os.Args) > 4 && os.Args[1] == "client" {
@@ -38,11 +41,11 @@ func main() {
 		os.Exit(0)
 	}
 	fmt.Fprintf(os.Stderr,
-		"Usage: socket server|client <URL> <ARG> ...\n")
+		"Usage: socket server|client dial|listen <URL> <ARG> ...\n")
 	os.Exit(1)
 }
 
-func server(t, addr string) {
+func server(t, addr, rawAddr string) {
 	sock := multisocket.New(connector.New(), sender.New(), receiver.New())
 
 	switch t {
@@ -50,9 +53,15 @@ func server(t, addr string) {
 		if err := sock.Dial(addr); err != nil {
 			log.WithField("err", err).Panicf("dial")
 		}
+		if err := sock.DialOptions(rawAddr, options.NewOptions().WithOption(transport.OptionConnRawMode, true)); err != nil {
+			log.WithField("err", err).Panicf("dial raw")
+		}
 	default:
 		if err := sock.Listen(addr); err != nil {
 			log.WithField("err", err).Panicf("listen")
+		}
+		if err := sock.ListenOptions(rawAddr, options.NewOptions().WithOption(transport.OptionConnRawMode, true)); err != nil {
+			log.WithField("err", err).Panicf("listen raw")
 		}
 	}
 

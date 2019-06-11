@@ -90,6 +90,25 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	return
 }
 
+func (p *pipe) recvRawMsg() (msg *multisocket.Message, err error) {
+	var (
+		payload []byte
+	)
+	if payload, err = p.p.Recv(); err != nil {
+		return
+	}
+
+	msg = newRawMessage(payload, nil)
+	msg.Content = payload
+
+	// update source, add current pipe id
+	msg.Source = msg.Source.AddID(p.p.ID())
+	msg.Header.Hops++
+	msg.Header.TTL--
+
+	return
+}
+
 // New create a receiver.
 func New() multisocket.Receiver {
 	return NewWithOptions()
@@ -175,14 +194,19 @@ func (r *receiver) run(p *pipe) {
 			WithFields(log.Fields{"id": p.p.ID()}).
 			Debug("pipe start run")
 	}
+
+	recvMsg := p.recvMsg
+	if p.p.IsRaw() {
+		recvMsg = p.recvRawMsg
+	}
+
 	var (
 		err error
 		msg *multisocket.Message
 	)
-
 RECVING:
 	for {
-		if msg, err = p.recvMsg(); err != nil {
+		if msg, err = recvMsg(); err != nil {
 			break
 		}
 
