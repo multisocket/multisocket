@@ -166,16 +166,16 @@ func (s *sender) remPipe(id uint32) {
 	p, ok := s.pipes[id]
 	if ok {
 		delete(s.pipes, id)
-		// async close pipe, avoid dead lock the sender.
-		go s.closePipe(p)
+		p.close()
 	}
 }
 
-func (s *sender) closePipe(p *pipe) {
+func (p *pipe) close() {
 	select {
 	case <-p.closedq:
 	default:
 		close(p.closedq)
+		p.p.Close()
 	DROP_MSG_LOOP:
 		for {
 			select {
@@ -190,7 +190,7 @@ func (s *sender) closePipe(p *pipe) {
 }
 
 func (s *sender) resendMsg(msg *Message) {
-	if msg.Header.SendType == multisocket.SendTypeToOne {
+	if msg.Header.SendType() == multisocket.SendTypeToOne {
 		// only resend when send one, so we can choose another pipe to send.
 		s.SendMsg(msg)
 	}
@@ -245,7 +245,28 @@ func (p *pipe) sendMsg(msg *multisocket.Message) error {
 	return p.p.Send(nil, msg.Encode()...)
 }
 
-func (p *pipe) sendRawMsg(msg *multisocket.Message) error {
+func (p *pipe) sendRawMsg(msg *multisocket.Message) (err error) {
+	header := msg.Header
+	if header.IsControlMsg() {
+		// control message
+		// raw pipe must do control actions before send.
+
+		do := true
+		if header.SendType() == multisocket.SendTypeReply {
+			do = header.Distance == 1
+		}
+		if !do {
+			return
+		}
+
+		switch header.ControlType() {
+		case multisocket.ControlTypeClosePeer:
+			p.close()
+			err = ErrClosed
+		}
+		return
+	}
+
 	return p.p.Send(msg.Content, msg.Extras...)
 }
 
@@ -294,7 +315,7 @@ func (s *sender) SendAll(content []byte, extras ...[]byte) (err error) {
 }
 
 func (s *sender) SendMsg(msg *Message) error {
-	switch msg.Header.SendType {
+	switch msg.Header.SendType() {
 	case multisocket.SendTypeReply:
 		return s.sendTo(msg)
 	case multisocket.SendTypeToOne:

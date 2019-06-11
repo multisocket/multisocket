@@ -57,12 +57,32 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	if header, err = newHeaderFromBytes(payload); err != nil {
 		return
 	}
+
+	if header.IsControlMsg() {
+		// control message
+
+		do := true
+		if header.SendType() == multisocket.SendTypeReply {
+			do = header.Distance == 1
+		}
+		if !do {
+			return
+		}
+
+		switch header.ControlType() {
+		case multisocket.ControlTypeClosePeer:
+			p.close()
+			err = ErrClosed
+		}
+		return
+	}
+
 	headerSize := header.Size()
 
 	source = newPathFromBytes(int(header.Hops), payload[headerSize:])
 	sourceSize := source.Size()
 
-	if header.SendType == multisocket.SendTypeReply {
+	if header.SendType() == multisocket.SendTypeReply {
 		dest = newPathFromBytes(header.DestLength(), payload[headerSize+sourceSize:])
 	}
 
@@ -175,16 +195,16 @@ func (r *receiver) remPipe(id uint32) {
 	p, ok := r.pipes[id]
 	if ok {
 		delete(r.pipes, id)
-		// async close pipe, avoid dead lock the receiver.
-		go r.closePipe(p)
+		p.close()
 	}
 }
 
-func (r *receiver) closePipe(p *pipe) {
+func (p *pipe) close() {
 	select {
 	case <-p.closedq:
 	default:
 		close(p.closedq)
+		p.p.Close()
 	}
 }
 
@@ -208,6 +228,10 @@ RECVING:
 	for {
 		if msg, err = recvMsg(); err != nil {
 			break
+		}
+		if msg == nil {
+			// ignore nil msg
+			continue
 		}
 
 		select {

@@ -14,7 +14,7 @@ const (
 type (
 	// MsgHeader message meta data
 	MsgHeader struct {
-		SendType uint8 // one, all, rely
+		Type     uint8 // 6:control type|2:send type one, all, rely
 		TTL      uint8 // time to live
 		Hops     uint8 // node count from origin
 		Distance uint8 // node count to destination
@@ -33,15 +33,39 @@ type (
 	}
 )
 
-// sender types
+const sendTypeMask uint8 = 0x03
+const controlTypeMask uint8 = 0xff ^ sendTypeMask
+
+// control types, high 6bits
+const (
+	ControlTypeNone uint8 = iota << 2
+	ControlTypeClosePeer
+)
+
+// send types, low 2bits
 const (
 	// random select one pipe to send
-	SendTypeToOne uint8 = iota
+	SendTypeToOne uint8 = iota & sendTypeMask
 	// send to all pipes
 	SendTypeToAll
 	// reply to a source
 	SendTypeReply
 )
+
+// SendType get message's send type
+func (h *MsgHeader) SendType() uint8 {
+	return h.Type & sendTypeMask
+}
+
+// ControlType get message's control type
+func (h *MsgHeader) ControlType() uint8 {
+	return h.Type & controlTypeMask
+}
+
+// IsControlMsg check if is control msg
+func (h *MsgHeader) IsControlMsg() bool {
+	return h.Type&controlTypeMask != ControlTypeNone
+}
 
 // Size get Header byte size.
 func (h *MsgHeader) Size() int {
@@ -104,6 +128,18 @@ func (src MsgPath) NextID() (id uint32, source MsgPath, ok bool) {
 	return
 }
 
+// NewControlMessage create a control message
+func NewControlMessage(controlType, sendType uint8, dest MsgPath) *Message {
+	header := &MsgHeader{Type: controlType | sendType, TTL: DefaultMsgTTL}
+	if sendType == SendTypeReply {
+		header.Distance = dest.Length()
+	}
+	return &Message{
+		Header:      header,
+		Destination: dest,
+	}
+}
+
 // Encode encode msg to bytes.
 func (msg *Message) Encode() [][]byte {
 	res := make([][]byte, 4+len(msg.Extras))
@@ -120,7 +156,7 @@ func (msg *Message) Encode() [][]byte {
 
 // HasDestination check if msg has a destination
 func (msg *Message) HasDestination() bool {
-	return msg.Header.SendType == SendTypeReply || msg.Destination.Length() > 0
+	return msg.Header.SendType() == SendTypeReply || msg.Destination.Length() > 0
 }
 
 // PipeID get this message's source pipe id.
