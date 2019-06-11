@@ -48,6 +48,8 @@ type (
 		LocalAddress() string
 		RemoteAddress() string
 
+		IsRaw() bool
+
 		Send(msg []byte, extras ...[]byte) error
 		SendTimeout(deadline time.Duration, msg []byte, extras ...[]byte) error
 		Recv() ([]byte, error)

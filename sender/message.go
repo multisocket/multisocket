@@ -5,7 +5,7 @@ import (
 )
 
 func newMessage(sendType uint8, ttl uint8, dest multisocket.MsgPath, content []byte, extras [][]byte) *multisocket.Message {
-	header := &multisocket.MsgHeader{SendType: sendType, TTL: defaultMsgTTL, Hops: 0}
+	header := &multisocket.MsgHeader{SendType: sendType, TTL: ttl, Hops: 0}
 	if header.SendType == multisocket.SendTypeReply {
 		header.Distance = dest.Length()
 	}

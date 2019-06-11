@@ -41,7 +41,7 @@ type (
 )
 
 const (
-	defaultMsgTTL        = uint8(16)
+	defaultMsgTTL        = multisocket.DefaultMsgTTL
 	defaultSendQueueSize = uint16(8)
 )
 
@@ -203,6 +203,11 @@ func (s *sender) run(p *pipe) {
 			Debug("pipe start run")
 	}
 
+	sendMsg := p.sendMsg
+	if p.p.IsRaw() {
+		sendMsg = p.sendRawMsg
+	}
+
 	var (
 		err error
 		msg *Message
@@ -223,7 +228,7 @@ SENDING:
 			continue
 		}
 
-		if err = p.p.Send(msg.Encode()...); err != nil {
+		if err = sendMsg(msg); err != nil {
 			s.resendMsg(msg)
 			break SENDING
 		}
@@ -234,6 +239,14 @@ SENDING:
 			WithFields(log.Fields{"id": p.p.ID()}).
 			Debug("pipe stopped run")
 	}
+}
+
+func (p *pipe) sendMsg(msg *multisocket.Message) error {
+	return p.p.Send(nil, msg.Encode()...)
+}
+
+func (p *pipe) sendRawMsg(msg *multisocket.Message) error {
+	return p.p.Send(msg.Content, msg.Extras...)
 }
 
 func (s *sender) newMsg(sendType uint8, dest multisocket.MsgPath, content []byte, extras [][]byte) (msg *Message) {
