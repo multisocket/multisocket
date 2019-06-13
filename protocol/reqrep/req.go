@@ -152,12 +152,12 @@ func (r *req) cancelRequest(requestID uint32) func() {
 	}
 }
 
-func (r *req) Close() {
+func (r *req) Close() error {
 	r.Lock()
 	defer r.Unlock()
 	if r.closed {
-		return
+		return multisocket.ErrClosed
 	}
 	r.closed = true
-	r.Socket.Close()
+	return r.Socket.Close()
 }

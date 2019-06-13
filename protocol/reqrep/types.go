@@ -23,7 +23,7 @@ type (
 		Request(content []byte) ([]byte, error)
 		ReqeustTimeout(t time.Duration, content []byte) ([]byte, error)
 		ReqeustAsync(content []byte) *Request
-		Close()
+		Close() error
 	}
 
 	// Handler is request handler
@@ -42,6 +42,6 @@ type (
 		// actions
 		SetRunner(runner Runner)
 		Start()
-		Close()
+		Close() error
 	}
 )

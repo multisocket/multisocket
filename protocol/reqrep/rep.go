@@ -50,14 +50,14 @@ func (r *rep) Start() {
 	go r.run()
 }
 
-func (r *rep) Close() {
+func (r *rep) Close() error {
 	r.Lock()
 	defer r.Unlock()
 	if r.closed {
-		return
+		return multisocket.ErrClosed
 	}
 	r.closed = true
-	r.Socket.Close()
+	return r.Socket.Close()
 }
 
 func (r *rep) run() {
