@@ -1,9 +1,10 @@
 package connector
 
 import (
-	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/webee/multisocket/utils"
 
 	"github.com/webee/multisocket/transport"
 )
@@ -23,46 +24,13 @@ type pipe struct {
 	closed bool
 }
 
-// The conns global state is just an ID allocator
-type idGen struct {
-	sync.Mutex
-	IDs  map[uint32]struct{}
-	next uint32
-}
-
-func (g *idGen) nextID() (id uint32) {
-	g.Lock()
-	defer g.Unlock()
-	for {
-		id = g.next & 0x7fffffff
-		g.next++
-		if id == 0 {
-			continue
-		}
-		if _, ok := g.IDs[id]; !ok {
-			g.IDs[id] = struct{}{}
-			break
-		}
-	}
-	return
-}
-
-func (g *idGen) free(id uint32) {
-	g.Lock()
-	delete(g.IDs, id)
-	g.Unlock()
-}
-
-var pipeID = &idGen{
-	IDs:  make(map[uint32]struct{}),
-	next: uint32(rand.NewSource(time.Now().UnixNano()).Int63()),
-}
+var pipeID = utils.NewRecyclableIDGenerator()
 
 func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener) *pipe {
 	return &pipe{
 		sendDeadline: PipeOptionSendDeadline.Value(parent.GetOptionDefault(PipeOptionSendDeadline, time.Duration(0))),
 		recvDeadline: PipeOptionRecvDeadline.Value(parent.GetOptionDefault(PipeOptionRecvDeadline, time.Duration(0))),
-		id:           pipeID.nextID(),
+		id:           pipeID.NextID(),
 		parent:       parent,
 		c:            tc,
 		d:            d,
@@ -100,7 +68,7 @@ func (p *pipe) Close() {
 
 	// This is last, as we keep the ID reserved until everything is
 	// done with it.
-	pipeID.free(p.id)
+	pipeID.Recycle(p.id)
 
 	return
 }

@@ -246,11 +246,6 @@ func (p *pipe) sendMsg(msg *multisocket.Message) error {
 }
 
 func (p *pipe) sendRawMsg(msg *multisocket.Message) (err error) {
-	header := msg.Header
-	if header.IsControlMsg() {
-		// TODO
-	}
-
 	return p.p.Send(msg.Content, msg.Extras...)
 }
 
@@ -279,7 +274,7 @@ func (s *sender) sendTo(msg *Message) (err error) {
 	p = s.pipes[id]
 	s.Unlock()
 	if p == nil {
-		err = ErrPipeNotFound
+		err = ErrBrokenPath
 		return
 	}
 
@@ -287,7 +282,7 @@ func (s *sender) sendTo(msg *Message) (err error) {
 }
 
 func (s *sender) SendTo(dest multisocket.MsgPath, content []byte, extras ...[]byte) (err error) {
-	return s.sendTo(s.newMsg(multisocket.SendTypeReply, dest, content, extras))
+	return s.sendTo(s.newMsg(multisocket.SendTypeToDest, dest, content, extras))
 }
 
 func (s *sender) Send(content []byte, extras ...[]byte) (err error) {
@@ -300,7 +295,7 @@ func (s *sender) SendAll(content []byte, extras ...[]byte) (err error) {
 
 func (s *sender) SendMsg(msg *Message) error {
 	switch msg.Header.SendType() {
-	case multisocket.SendTypeReply:
+	case multisocket.SendTypeToDest:
 		return s.sendTo(msg)
 	case multisocket.SendTypeToOne:
 		return s.doPushMsg(msg, s.sendq, nil)

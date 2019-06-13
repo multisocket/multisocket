@@ -84,7 +84,7 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	source = newPathFromBytes(int(header.Hops), payload[headerSize:])
 	sourceSize := source.Size()
 
-	if sendType == multisocket.SendTypeReply {
+	if sendType == multisocket.SendTypeToDest {
 		dest = newPathFromBytes(header.DestLength(), payload[headerSize+sourceSize:])
 	}
 
@@ -95,7 +95,7 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	header.Hops++
 	header.TTL--
 
-	if sendType == multisocket.SendTypeReply {
+	if sendType == multisocket.SendTypeToDest {
 		// update destination, remove last pipe id
 		if _, dest, ok = dest.NextID(); !ok {
 			// anyway, msg arrived
@@ -222,11 +222,6 @@ RECVING:
 			continue
 		}
 
-		// handle control messages
-		if msg.Header.IsControlMsg() {
-			r.handleControlMsg(p, msg)
-		}
-
 		select {
 		case <-r.closedq:
 			break RECVING
@@ -248,25 +243,6 @@ RECVING:
 			WithFields(log.Fields{"id": p.p.ID()}).
 			Debug("pipe stopped run")
 	}
-}
-
-func (r *receiver) handleControlMsg(p *pipe, msg *multisocket.Message) {
-	/*
-		do := true
-		if sendType == multisocket.SendTypeReply {
-			do = header.Distance == 0
-		}
-		if !do {
-			return
-		}
-
-		switch header.ControlType() {
-		case multisocket.ControlTypeClosePeer:
-			p.close()
-			err = ErrClosed
-		}
-		return
-	*/
 }
 
 func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {

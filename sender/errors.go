@@ -16,6 +16,6 @@ const (
 	ErrTimeout         = multisocket.ErrTimeout
 	ErrMsgDropped      = err("message dropped")
 	ErrBadDestination  = err("bad destination")
-	ErrPipeNotFound    = err("pipe not found")
+	ErrBrokenPath      = err("broken path")
 	ErrInvalidSendType = err("invalid send type")
 )

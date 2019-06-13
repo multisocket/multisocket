@@ -35,7 +35,6 @@ type (
 )
 
 const sendTypeMask uint8 = 0x03
-const controlTypeMask uint8 = 0xff ^ sendTypeMask
 
 // send types, low 2bits
 const (
@@ -43,18 +42,16 @@ const (
 	SendTypeToOne uint8 = iota & sendTypeMask
 	// send to all pipes
 	SendTypeToAll
-	// reply to a source
-	SendTypeReply
+	// send to a destination
+	SendTypeToDest
 )
 
 // Msg Flags
 const (
-	MsgFlagIsControl uint8 = 1 << (iota + 2)
-)
-
-// control types
-const (
-	ControlTypeClosePeer uint8 = 0x00
+	// socket internal message
+	MsgFlagInternal uint8 = 1 << (iota + 2)
+	// protocol control message, use by protocols
+	MsgFlagControl
 )
 
 // SendType get message's send type
@@ -62,9 +59,9 @@ func (h *MsgHeader) SendType() uint8 {
 	return h.Flags & sendTypeMask
 }
 
-// IsControlMsg check if is control msg
-func (h *MsgHeader) IsControlMsg() bool {
-	return h.Flags&ControlTypeClosePeer != 0
+// HasFlags check if header has flags setted.
+func (h *MsgHeader) HasFlags(flags uint8) bool {
+	return h.Flags&flags == flags
 }
 
 // Size get Header byte size.
@@ -85,58 +82,66 @@ func (h *MsgHeader) Encode() []byte {
 }
 
 // Size get Path byte size
-func (src MsgPath) Size() int {
-	return len(src)
+func (path MsgPath) Size() int {
+	return len(path)
 }
 
 // Length get Path length
-func (src MsgPath) Length() uint8 {
-	return uint8(len(src) / 4)
+func (path MsgPath) Length() uint8 {
+	return uint8(len(path) / 4)
 }
 
 // Encode Source to bytes
-func (src MsgPath) Encode() []byte {
-	return src
+func (path MsgPath) Encode() []byte {
+	return path
 }
 
 // CurID get source's current pipe id.
-func (src MsgPath) CurID() (id uint32, ok bool) {
-	if len(src) < 4 {
+func (path MsgPath) CurID() (id uint32, ok bool) {
+	if len(path) < 4 {
 		return
 	}
-	id = binary.BigEndian.Uint32(src)
+	id = binary.BigEndian.Uint32(path)
 	ok = true
 	return
 }
 
 // AddID add the new pipe id to head.
-func (src MsgPath) AddID(id uint32) (source MsgPath) {
-	source = append(make([]byte, 4), src...)
+func (path MsgPath) AddID(id uint32) (source MsgPath) {
+	source = append(make([]byte, 4), path...)
 	binary.BigEndian.PutUint32(source, id)
 	return
 }
 
+// AddSource add the new pipe id to head.
+func (path MsgPath) AddSource(id [4]byte) (source MsgPath) {
+	source = append(id[:4], path...)
+	return
+}
+
 // NextID get source's next pipe id and remain source.
-func (src MsgPath) NextID() (id uint32, source MsgPath, ok bool) {
-	if len(src) < 4 {
-		source = src
+func (path MsgPath) NextID() (id uint32, source MsgPath, ok bool) {
+	if len(path) < 4 {
+		source = path
 		return
 	}
-	id = binary.BigEndian.Uint32(src)
-	source = src[4:]
+	id = binary.BigEndian.Uint32(path)
+	source = path[4:]
 	ok = true
 	return
 }
 
-// NewControlMessage create a control message
-func NewControlMessage(controlType, sendType uint8, dest MsgPath) *Message {
-	header := &MsgHeader{Flags: controlType | sendType, TTL: DefaultMsgTTL}
-	if sendType == SendTypeReply {
+// NewMessage create a message
+func NewMessage(sendType uint8, dest MsgPath, flags uint8, content []byte, extras ...[]byte) *Message {
+	header := &MsgHeader{Flags: flags | sendType, TTL: DefaultMsgTTL}
+	if sendType == SendTypeToDest {
 		header.Distance = dest.Length()
 	}
 	return &Message{
 		Header:      header,
 		Destination: dest,
+		Content:     content,
+		Extras:      extras,
 	}
 }
 
@@ -154,9 +159,15 @@ func (msg *Message) Encode() [][]byte {
 	return res
 }
 
+// AddSource add pipe id to msg source
+func (msg *Message) AddSource(id [4]byte) {
+	msg.Source = msg.Source.AddSource(id)
+	msg.Header.Hops++
+}
+
 // HasDestination check if msg has a destination
 func (msg *Message) HasDestination() bool {
-	return msg.Header.SendType() == SendTypeReply || msg.Destination.Length() > 0
+	return msg.Header.SendType() == SendTypeToDest || msg.Destination.Length() > 0
 }
 
 // PipeID get this message's source pipe id.
