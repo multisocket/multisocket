@@ -248,23 +248,7 @@ func (p *pipe) sendMsg(msg *multisocket.Message) error {
 func (p *pipe) sendRawMsg(msg *multisocket.Message) (err error) {
 	header := msg.Header
 	if header.IsControlMsg() {
-		// control message
-		// raw pipe must do control actions before send.
-
-		do := true
-		if header.SendType() == multisocket.SendTypeReply {
-			do = header.Distance == 1
-		}
-		if !do {
-			return
-		}
-
-		switch header.ControlType() {
-		case multisocket.ControlTypeClosePeer:
-			p.close()
-			err = ErrClosed
-		}
-		return
+		// TODO
 	}
 
 	return p.p.Send(msg.Content, msg.Extras...)

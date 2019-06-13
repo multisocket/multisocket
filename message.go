@@ -14,7 +14,8 @@ const (
 type (
 	// MsgHeader message meta data
 	MsgHeader struct {
-		Type     uint8 // 6:control type|2:send type one, all, rely
+		// Flags
+		Flags    uint8 // 6:other flags|2:send type one, all, rely
 		TTL      uint8 // time to live
 		Hops     uint8 // node count from origin
 		Distance uint8 // node count to destination
@@ -36,12 +37,6 @@ type (
 const sendTypeMask uint8 = 0x03
 const controlTypeMask uint8 = 0xff ^ sendTypeMask
 
-// control types, high 6bits
-const (
-	ControlTypeNone uint8 = iota << 2
-	ControlTypeClosePeer
-)
-
 // send types, low 2bits
 const (
 	// random select one pipe to send
@@ -52,19 +47,24 @@ const (
 	SendTypeReply
 )
 
+// Msg Flags
+const (
+	MsgFlagIsControl uint8 = 1 << (iota + 2)
+)
+
+// control types
+const (
+	ControlTypeClosePeer uint8 = 0x00
+)
+
 // SendType get message's send type
 func (h *MsgHeader) SendType() uint8 {
-	return h.Type & sendTypeMask
-}
-
-// ControlType get message's control type
-func (h *MsgHeader) ControlType() uint8 {
-	return h.Type & controlTypeMask
+	return h.Flags & sendTypeMask
 }
 
 // IsControlMsg check if is control msg
 func (h *MsgHeader) IsControlMsg() bool {
-	return h.Type&controlTypeMask != ControlTypeNone
+	return h.Flags&ControlTypeClosePeer != 0
 }
 
 // Size get Header byte size.
@@ -130,7 +130,7 @@ func (src MsgPath) NextID() (id uint32, source MsgPath, ok bool) {
 
 // NewControlMessage create a control message
 func NewControlMessage(controlType, sendType uint8, dest MsgPath) *Message {
-	header := &MsgHeader{Type: controlType | sendType, TTL: DefaultMsgTTL}
+	header := &MsgHeader{Flags: controlType | sendType, TTL: DefaultMsgTTL}
 	if sendType == SendTypeReply {
 		header.Distance = dest.Length()
 	}

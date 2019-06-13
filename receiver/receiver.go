@@ -35,6 +35,27 @@ var (
 	nilQ <-chan time.Time
 )
 
+// New create a receiver.
+func New() multisocket.Receiver {
+	return NewWithOptions()
+}
+
+// NewWithOptions create a normal receiver with options.
+func NewWithOptions(ovs ...*options.OptionValue) multisocket.Receiver {
+	r := &receiver{
+		Options:            options.NewOptions(),
+		attachedConnectors: make(map[multisocket.Connector]struct{}),
+		closed:             false,
+		closedq:            make(chan struct{}),
+		pipes:              make(map[uint32]*pipe),
+	}
+	for _, ov := range ovs {
+		r.SetOption(ov.Option, ov.Value)
+	}
+
+	return r
+}
+
 func newPipe(p multisocket.Pipe) *pipe {
 	return &pipe{
 		closedq: make(chan struct{}),
@@ -57,32 +78,13 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	if header, err = newHeaderFromBytes(payload); err != nil {
 		return
 	}
-
-	if header.IsControlMsg() {
-		// control message
-
-		do := true
-		if header.SendType() == multisocket.SendTypeReply {
-			do = header.Distance == 1
-		}
-		if !do {
-			return
-		}
-
-		switch header.ControlType() {
-		case multisocket.ControlTypeClosePeer:
-			p.close()
-			err = ErrClosed
-		}
-		return
-	}
-
+	sendType := header.SendType()
 	headerSize := header.Size()
 
 	source = newPathFromBytes(int(header.Hops), payload[headerSize:])
 	sourceSize := source.Size()
 
-	if header.SendType() == multisocket.SendTypeReply {
+	if sendType == multisocket.SendTypeReply {
 		dest = newPathFromBytes(header.DestLength(), payload[headerSize+sourceSize:])
 	}
 
@@ -93,12 +95,14 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	header.Hops++
 	header.TTL--
 
-	// update destination, remove last pipe id
-	if _, dest, ok = dest.NextID(); !ok {
-		// anyway, msg arrived
-		header.Distance = 0
-	} else {
-		header.Distance = dest.Length()
+	if sendType == multisocket.SendTypeReply {
+		// update destination, remove last pipe id
+		if _, dest, ok = dest.NextID(); !ok {
+			// anyway, msg arrived
+			header.Distance = 0
+		} else {
+			header.Distance = dest.Length()
+		}
 	}
 
 	msg = &multisocket.Message{
@@ -119,7 +123,6 @@ func (p *pipe) recvRawMsg() (msg *multisocket.Message, err error) {
 	}
 
 	msg = newRawMessage(payload, nil)
-	msg.Content = payload
 
 	// update source, add current pipe id
 	msg.Source = msg.Source.AddID(p.p.ID())
@@ -127,27 +130,6 @@ func (p *pipe) recvRawMsg() (msg *multisocket.Message, err error) {
 	msg.Header.TTL--
 
 	return
-}
-
-// New create a receiver.
-func New() multisocket.Receiver {
-	return NewWithOptions()
-}
-
-// NewWithOptions create a normal receiver with options.
-func NewWithOptions(ovs ...*options.OptionValue) multisocket.Receiver {
-	r := &receiver{
-		Options:            options.NewOptions(),
-		attachedConnectors: make(map[multisocket.Connector]struct{}),
-		closed:             false,
-		closedq:            make(chan struct{}),
-		pipes:              make(map[uint32]*pipe),
-	}
-	for _, ov := range ovs {
-		r.SetOption(ov.Option, ov.Value)
-	}
-
-	return r
 }
 
 func (r *receiver) AttachConnector(connector multisocket.Connector) {
@@ -227,11 +209,22 @@ func (r *receiver) run(p *pipe) {
 RECVING:
 	for {
 		if msg, err = recvMsg(); err != nil {
+			if log.IsLevelEnabled(log.DebugLevel) {
+				log.WithField("domain", "receiver").
+					WithError(err).
+					WithFields(log.Fields{"id": p.p.ID()}).
+					Debug("recvMsg")
+			}
 			break
 		}
 		if msg == nil {
 			// ignore nil msg
 			continue
+		}
+
+		// handle control messages
+		if msg.Header.IsControlMsg() {
+			r.handleControlMsg(p, msg)
 		}
 
 		select {
@@ -248,12 +241,32 @@ RECVING:
 		case r.recvq <- msg:
 		}
 	}
+
 	r.remPipe(p.p.ID())
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "receiver").
 			WithFields(log.Fields{"id": p.p.ID()}).
 			Debug("pipe stopped run")
 	}
+}
+
+func (r *receiver) handleControlMsg(p *pipe, msg *multisocket.Message) {
+	/*
+		do := true
+		if sendType == multisocket.SendTypeReply {
+			do = header.Distance == 0
+		}
+		if !do {
+			return
+		}
+
+		switch header.ControlType() {
+		case multisocket.ControlTypeClosePeer:
+			p.close()
+			err = ErrClosed
+		}
+		return
+	*/
 }
 
 func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {

@@ -13,7 +13,7 @@ const (
 
 func newRawMessage(content []byte, extras [][]byte) *multisocket.Message {
 	// raw message must be send to one
-	header := &multisocket.MsgHeader{Type: multisocket.SendTypeToOne, TTL: defaultMsgTTL}
+	header := &multisocket.MsgHeader{Flags: multisocket.SendTypeToOne, TTL: defaultMsgTTL}
 	return &multisocket.Message{
 		Header:  header,
 		Content: content,

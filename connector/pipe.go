@@ -147,7 +147,7 @@ func (p *pipe) RecvTimeout(deadline time.Duration) (msg []byte, err error) {
 		if msg, err = p.c.Recv(); err != nil {
 			// NOTE: close on any error
 			go p.Close()
-			err = ErrClosed
+			// err = ErrClosed
 		}
 		return
 	}
@@ -158,7 +158,7 @@ func (p *pipe) RecvTimeout(deadline time.Duration) (msg []byte, err error) {
 		if msg, err = p.c.Recv(); err != nil {
 			// NOTE: close on any error
 			go p.Close()
-			err = ErrClosed
+			// err = ErrClosed
 		}
 		done <- struct{}{}
 	}()
