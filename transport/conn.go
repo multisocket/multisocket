@@ -35,6 +35,7 @@ func (conn *connection) Recv() (msg []byte, err error) {
 	var sz uint32
 
 	if err = binary.Read(conn.c, binary.BigEndian, &sz); err != nil {
+		err = ErrBadMsg
 		return
 	}
 
@@ -68,8 +69,14 @@ func (conn *connection) Send(msg []byte, extras ...[]byte) (err error) {
 
 	// Attach the length header along with the actual header and body
 	buff = append(buff, lbyte)
-	buff = append(buff, msg)
-	buff = append(buff, extras...)
+	if len(msg) > 0 {
+		buff = append(buff, msg)
+	}
+	for _, ex := range extras {
+		if len(ex) > 0 {
+			buff = append(buff, ex)
+		}
+	}
 
 	if _, err := buff.WriteTo(conn.c); err != nil {
 		return err

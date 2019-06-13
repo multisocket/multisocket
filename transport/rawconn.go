@@ -32,8 +32,14 @@ func (conn *rawConnection) Send(msg []byte, extras ...[]byte) (err error) {
 		buff = net.Buffers{}
 	)
 
-	buff = append(buff, msg)
-	buff = append(buff, extras...)
+	if len(msg) > 0 {
+		buff = append(buff, msg)
+	}
+	for _, ex := range extras {
+		if len(ex) > 0 {
+			buff = append(buff, ex)
+		}
+	}
 
 	if _, err := buff.WriteTo(conn.c); err != nil {
 		return err
