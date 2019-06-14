@@ -310,11 +310,14 @@ func (c *connector) NewListener(addr string, opts options.Options) (l multisocke
 	return
 }
 
-func (c *connector) GetPipe(id uint32) (p multisocket.Pipe) {
+func (c *connector) GetPipe(id uint32) multisocket.Pipe {
 	c.Lock()
-	p = c.pipes[id]
+	p := c.pipes[id]
 	c.Unlock()
-	return
+	if p == nil {
+		return nil
+	}
+	return p
 }
 
 func (c *connector) ClosePipe(id uint32) {
