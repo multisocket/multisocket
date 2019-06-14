@@ -22,13 +22,11 @@ type (
 	// Connection is one stream connection between two peer
 	Connection interface {
 		io.ReadWriteCloser
-		// next stream
-		// Next() (Connection, error)
 	}
 )
 
 // control messages
 const (
-	ControlMsgKeepAlive    string = "<"
-	ControlMsgKeepAliveAck string = ">"
+	ControlMsgKeepAlive    string = ">"
+	ControlMsgKeepAliveAck string = "<"
 )

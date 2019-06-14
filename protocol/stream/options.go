@@ -9,6 +9,7 @@ type optionName int
 const (
 	optionNameStreamQueueSize optionName = iota
 	optionNameConnRecvQueueSize
+	optionNameAcceptable
 	optionNameConnKeepAliveIdle
 	optionNameConnKeepAliveInteval
 	optionNameConnKeepAliveProbes
@@ -18,6 +19,7 @@ const (
 var (
 	OptionStreamQueueSize       = options.NewIntOption(optionNameStreamQueueSize)
 	OptionConnRecvQueueSize     = options.NewIntOption(optionNameConnRecvQueueSize)
+	OptionAcceptable            = options.NewBoolOption(optionNameAcceptable)
 	OptionConnKeepAliveIdle     = options.NewTimeDurationOption(optionNameConnKeepAliveIdle)
 	OptionConnKeepAliveInterval = options.NewTimeDurationOption(optionNameConnKeepAliveInteval)
 	OptionConnKeepAliveProbes   = options.NewIntOption(optionNameConnKeepAliveProbes)

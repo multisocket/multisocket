@@ -28,6 +28,7 @@ type (
 		connq   chan *connection
 
 		streamRecvQueueSize int
+		acceptable          bool
 	}
 
 	connection struct {
@@ -64,6 +65,7 @@ func New() Stream {
 func NewWithOptions(opts options.Options) Stream {
 	streamQueueSize := OptionStreamQueueSize.Value(opts.GetOptionDefault(OptionStreamQueueSize, defaultConnQueueSize))
 	streamRecvQueueSize := OptionConnRecvQueueSize.Value(opts.GetOptionDefault(OptionConnRecvQueueSize, defaultConnRecvQueueSize))
+	acceptable := OptionAcceptable.Value(opts.GetOptionDefault(OptionAcceptable, true))
 	s := &stream{
 		Options:             opts,
 		Socket:              multisocket.New(connector.New(), sender.New(), receiver.New()),
@@ -71,6 +73,7 @@ func NewWithOptions(opts options.Options) Stream {
 		conns:               make(map[uint32]*connection),
 		connq:               make(chan *connection, streamQueueSize),
 		streamRecvQueueSize: streamRecvQueueSize,
+		acceptable:          acceptable,
 	}
 
 	go s.run()
@@ -101,6 +104,10 @@ func (s *stream) run() {
 RUNNING:
 	for {
 		if msg, err = s.RecvMsg(); err != nil {
+			if log.IsLevelEnabled(log.DebugLevel) {
+				log.WithField("domain", "stream").
+					WithError(err).Info("RecvMsg error")
+			}
 			break RUNNING
 		}
 		if log.IsLevelEnabled(log.TraceLevel) {
@@ -120,9 +127,13 @@ RUNNING:
 					log.WithField("domain", "stream").
 						WithField("streamID", id).Warn("stream not found")
 				}
-				continue
+				continue RUNNING
 			}
 		default:
+			if !s.acceptable {
+				continue RUNNING
+			}
+
 			// new connection
 			conn = s.newConnection(msg.Source)
 			s.addConn(conn)
@@ -194,7 +205,7 @@ func (s *stream) Connect(timeout time.Duration) (conn Connection, err error) {
 		log.WithField("domain", "stream").
 			WithField("streamID", c.id).
 			WithField("action", "connecting").
-			Info("connect")
+			Info("Connect")
 	}
 
 	if err = c.connect(); err != nil {
@@ -217,13 +228,18 @@ func (s *stream) Connect(timeout time.Duration) (conn Connection, err error) {
 			log.WithField("domain", "stream").
 				WithField("streamID", c.id).
 				WithField("action", "connected").
-				Info("connect")
+				Info("Connect")
 		}
 		return c, nil
 	}
 }
 
 func (s *stream) Accept() (conn Connection, err error) {
+	if !s.acceptable {
+		err = multisocket.ErrOperationNotSupported
+		return
+	}
+
 	select {
 	case <-s.closedq:
 		err = multisocket.ErrClosed
@@ -339,6 +355,12 @@ RUNNING:
 							WithField("streamID", conn.id).
 							Info("<keepAliveAck")
 					}
+				default:
+					if log.IsLevelEnabled(log.DebugLevel) {
+						log.WithField("domain", "stream").
+							WithField("streamID", conn.id).
+							Info("<emptyControl")
+					}
 				}
 			} else {
 				conn.pw.Write(msg.Content)
@@ -348,15 +370,19 @@ RUNNING:
 			keepAliveAckTq = nil
 			keepAliveTq = time.After(conn.s.connKeepAliveIdle())
 		case <-keepAliveTq:
+			probes--
 			// time to send heartbeat
 			if err := conn.sendKeepAlive(); err != nil {
 				conn.Close()
 				break RUNNING
 			}
 
-			// setup keepAliveAckTq
-			probes--
-			keepAliveAckTq = time.After(keepAliveInterval)
+			// setup keepAliveAckTq, reset keepAliveTq
+			keepAliveAckTq = nil
+			if keepAliveInterval > 0 {
+				keepAliveAckTq = time.After(keepAliveInterval)
+			}
+			keepAliveTq = time.After(conn.s.connKeepAliveIdle())
 		case <-keepAliveAckTq:
 			if log.IsLevelEnabled(log.DebugLevel) {
 				log.WithField("domain", "stream").
@@ -373,7 +399,10 @@ RUNNING:
 				}
 
 				// setup keepAliveAckTq
-				keepAliveAckTq = time.After(keepAliveInterval)
+				keepAliveAckTq = nil
+				if keepAliveInterval > 0 {
+					keepAliveAckTq = time.After(keepAliveInterval)
+				}
 			} else {
 				// recv heartbeat timeout
 				conn.Close()
