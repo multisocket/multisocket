@@ -32,8 +32,14 @@ const (
 )
 
 var (
-	nilQ <-chan time.Time
+	nilQ    <-chan time.Time
+	closedQ chan time.Time
 )
+
+func init() {
+	closedQ = make(chan time.Time)
+	close(closedQ)
+}
 
 // New create a receiver.
 func New() multisocket.Receiver {
@@ -122,12 +128,9 @@ func (p *pipe) recvRawMsg() (msg *multisocket.Message, err error) {
 		return
 	}
 
-	msg = newRawMessage(payload, nil)
-
-	// update source, add current pipe id
+	msg = multisocket.NewMessage(multisocket.SendTypeToOne, nil, 0, payload)
 	msg.Source = msg.Source.AddID(p.p.ID())
-	msg.Header.Hops++
-	msg.Header.TTL--
+	msg.Header.Hops = msg.Source.Length()
 
 	return
 }
@@ -193,13 +196,22 @@ func (p *pipe) close() {
 func (r *receiver) run(p *pipe) {
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "receiver").
-			WithFields(log.Fields{"id": p.p.ID()}).
-			Debug("pipe start run")
+			WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
+			Debug("receiver start run")
 	}
 
 	recvMsg := p.recvMsg
 	if p.p.IsRaw() {
 		recvMsg = p.recvRawMsg
+
+		// NOTE:
+		// send a empty control to make a connection
+		msg := multisocket.NewMessage(multisocket.SendTypeToOne, nil, multisocket.MsgFlagControl, nil)
+		// update source, add current pipe id
+		msg.Source = msg.Source.AddID(p.p.ID())
+		msg.Header.Hops = msg.Source.Length()
+
+		r.recvq <- msg
 	}
 
 	var (
@@ -240,8 +252,8 @@ RECVING:
 	r.remPipe(p.p.ID())
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "receiver").
-			WithFields(log.Fields{"id": p.p.ID()}).
-			Debug("pipe stopped run")
+			WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
+			Debug("receiver stopped run")
 	}
 }
 
@@ -252,15 +264,27 @@ func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {
 		tq = time.After(recvDeadline)
 	}
 
-	select {
-	case <-r.closedq:
-		err = ErrClosed
-		return
-	case <-tq:
-		err = ErrTimeout
-		return
-	case msg = <-r.recvq:
-		return
+	var (
+		retryq     <-chan time.Time = closedQ
+		retryTimes                  = time.Duration(0)
+	)
+	for {
+		select {
+		case <-r.closedq:
+			err = ErrClosed
+			return
+		case <-tq:
+			err = ErrTimeout
+			return
+		case msg = <-r.recvq:
+			return
+		case <-retryq:
+			// FIXME: fix block on recvq channel bug: recvq is not empty.
+			if retryTimes < 100 {
+				retryTimes++
+			}
+			retryq = time.After(retryTimes * 10 * time.Millisecond)
+		}
 	}
 }
 

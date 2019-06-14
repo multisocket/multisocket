@@ -34,7 +34,10 @@ type (
 	}
 )
 
-const sendTypeMask uint8 = 0x03
+const (
+	sendTypeMask uint8 = 0x03
+	flagsMask    uint8 = 0xff ^ sendTypeMask
+)
 
 // send types, low 2bits
 const (
@@ -62,6 +65,11 @@ func (h *MsgHeader) SendType() uint8 {
 // HasFlags check if header has flags setted.
 func (h *MsgHeader) HasFlags(flags uint8) bool {
 	return h.Flags&flags == flags
+}
+
+// HasAnyFlags check if header has any flags setted.
+func (h *MsgHeader) HasAnyFlags() bool {
+	return h.Flags&flagsMask != 0
 }
 
 // Size get Header byte size.

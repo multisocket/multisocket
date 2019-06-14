@@ -199,8 +199,8 @@ func (s *sender) resendMsg(msg *Message) {
 func (s *sender) run(p *pipe) {
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "sender").
-			WithFields(log.Fields{"id": p.p.ID()}).
-			Debug("pipe start run")
+			WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
+			Debug("sender start run")
 	}
 
 	sendMsg := p.sendMsg
@@ -236,8 +236,8 @@ SENDING:
 	s.remPipe(p.p.ID())
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "sender").
-			WithFields(log.Fields{"id": p.p.ID()}).
-			Debug("pipe stopped run")
+			WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
+			Debug("sender stopped run")
 	}
 }
 
@@ -246,6 +246,10 @@ func (p *pipe) sendMsg(msg *multisocket.Message) error {
 }
 
 func (p *pipe) sendRawMsg(msg *multisocket.Message) (err error) {
+	if msg.Header.HasAnyFlags() {
+		// ignore none normal messages.
+		return
+	}
 	return p.p.Send(msg.Content, msg.Extras...)
 }
 

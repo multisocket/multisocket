@@ -11,16 +11,6 @@ const (
 	defaultMsgTTL = multisocket.DefaultMsgTTL
 )
 
-func newRawMessage(content []byte, extras [][]byte) *multisocket.Message {
-	// raw message must be send to one
-	header := &multisocket.MsgHeader{Flags: multisocket.SendTypeToOne, TTL: defaultMsgTTL}
-	return &multisocket.Message{
-		Header:  header,
-		Content: content,
-		Extras:  extras,
-	}
-}
-
 func newHeaderFromBytes(payload []byte) (header *multisocket.MsgHeader, err error) {
 	header = new(multisocket.MsgHeader)
 	if len(payload) < header.Size() {
