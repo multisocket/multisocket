@@ -53,17 +53,15 @@ func GetTransportFromAddr(addr string) Transport {
 // scheme.
 func RegisterTransport(t Transport) {
 	lock.Lock()
-	defer lock.Unlock()
 	transports[t.Scheme()] = t
+	lock.Unlock()
 }
 
 // GetTransport is used by a socket to lookup the transport
 // for a given scheme.
 func GetTransport(scheme string) Transport {
 	lock.RLock()
-	defer lock.RUnlock()
-	if t, ok := transports[scheme]; ok {
-		return t
-	}
-	return nil
+	t := transports[scheme]
+	lock.RUnlock()
+	return t
 }
