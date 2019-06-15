@@ -69,7 +69,7 @@ func NewWithOptions(ovs ...*options.OptionValue) Sender {
 	return s
 }
 
-func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan struct{}) error {
+func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan struct{}) (err error) {
 	bestEffort := s.bestEffort()
 	if bestEffort {
 		select {
@@ -85,22 +85,27 @@ func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan st
 		}
 	}
 
+	var timeoutTimer *time.Timer
 	sendDeadline := s.sendDeadline()
 	tq := nilQ
 	if sendDeadline > 0 {
-		tq = time.After(sendDeadline)
+		timeoutTimer = time.NewTimer(sendDeadline)
+		tq = timeoutTimer.C
 	}
 
 	select {
 	case <-closeq:
-		return ErrClosed
+		err = ErrClosed
 	case <-s.closedq:
-		return ErrClosed
+		err = ErrClosed
 	case sendq <- msg:
-		return nil
 	case <-tq:
-		return ErrTimeout
+		err = ErrTimeout
 	}
+	if timeoutTimer != nil {
+		timeoutTimer.Stop()
+	}
+	return
 }
 
 func (s *sender) pushMsgToPipes(msg *Message, pipes []*pipe) {

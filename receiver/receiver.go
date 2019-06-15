@@ -258,33 +258,50 @@ RECVING:
 }
 
 func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {
+	var (
+		timeoutTimer *time.Timer
+		retryTimer   *time.Timer
+		retryq       <-chan time.Time = closedQ
+		retryTimes                    = time.Duration(0)
+	)
+
 	recvDeadline := r.recvDeadline()
 	tq := nilQ
 	if recvDeadline > 0 {
-		tq = time.After(recvDeadline)
+		timeoutTimer = time.NewTimer(recvDeadline)
+		tq = timeoutTimer.C
 	}
 
-	var (
-		retryq     <-chan time.Time = closedQ
-		retryTimes                  = time.Duration(0)
-	)
 	for {
 		select {
 		case <-r.closedq:
 			err = ErrClosed
-			return
 		case <-tq:
 			err = ErrTimeout
-			return
 		case msg = <-r.recvq:
-			return
 		case <-retryq:
-			// FIXME: fix block on recvq channel bug: recvq is not empty.
+			// FIXME: fix block on recvq channel bug: recvq is not empty but block here.
+			if len(r.recvq) > 0 {
+				retryq = nilQ
+				continue
+			}
 			if retryTimes < 100 {
 				retryTimes++
 			}
-			retryq = time.After(retryTimes * 10 * time.Millisecond)
+			retryTimer = time.NewTimer(1 * time.Second)
+			retryq = retryTimer.C
+			if log.IsLevelEnabled(log.TraceLevel) {
+				log.WithField("domain", "receiver").Tracef("retry recv: %d", retryTimes)
+			}
+			continue
 		}
+		if retryTimer != nil {
+			retryTimer.Stop()
+		}
+		if timeoutTimer != nil {
+			timeoutTimer.Stop()
+		}
+		return
 	}
 }
 
