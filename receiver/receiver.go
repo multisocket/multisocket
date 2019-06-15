@@ -153,8 +153,8 @@ func (r *receiver) recvQueueSize() uint16 {
 	return OptionRecvQueueSize.Value(r.GetOptionDefault(OptionRecvQueueSize, defaultRecvQueueSize))
 }
 
-func (r *receiver) recvDeadline() time.Duration {
-	return OptionRecvDeadline.Value(r.GetOptionDefault(OptionRecvDeadline, time.Duration(0)))
+func (r *receiver) recvTimeout() time.Duration {
+	return OptionRecvTimeout.Value(r.GetOptionDefault(OptionRecvTimeout, time.Duration(0)))
 }
 
 func (r *receiver) HandlePipeEvent(e multisocket.PipeEvent, pipe multisocket.Pipe) {
@@ -265,10 +265,10 @@ func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {
 		retryTimes                    = time.Duration(0)
 	)
 
-	recvDeadline := r.recvDeadline()
+	recvTimeout := r.recvTimeout()
 	tq := nilQ
-	if recvDeadline > 0 {
-		timeoutTimer = time.NewTimer(recvDeadline)
+	if recvTimeout > 0 {
+		timeoutTimer = time.NewTimer(recvTimeout)
 		tq = timeoutTimer.C
 	}
 

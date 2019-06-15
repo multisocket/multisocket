@@ -86,10 +86,10 @@ func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan st
 	}
 
 	var timeoutTimer *time.Timer
-	sendDeadline := s.sendDeadline()
+	sendTimeout := s.sendTimeout()
 	tq := nilQ
-	if sendDeadline > 0 {
-		timeoutTimer = time.NewTimer(sendDeadline)
+	if sendTimeout > 0 {
+		timeoutTimer = time.NewTimer(sendTimeout)
 		tq = timeoutTimer.C
 	}
 
@@ -144,8 +144,8 @@ func (s *sender) bestEffort() bool {
 	return OptionSendBestEffort.Value(s.GetOptionDefault(OptionSendBestEffort, false))
 }
 
-func (s *sender) sendDeadline() time.Duration {
-	return OptionSendDeadline.Value(s.GetOptionDefault(OptionSendDeadline, time.Duration(0)))
+func (s *sender) sendTimeout() time.Duration {
+	return OptionSendTimeout.Value(s.GetOptionDefault(OptionSendTimeout, time.Duration(0)))
 }
 
 func (s *sender) HandlePipeEvent(e multisocket.PipeEvent, pipe Pipe) {

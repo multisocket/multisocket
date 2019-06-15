@@ -10,7 +10,7 @@ const (
 	optionNameTTL optionName = iota
 	optionNameSendQueueSize
 	optionNameSendBestEffort
-	optionNameSendDeadline
+	optionNameSendTimeout
 )
 
 // Options
@@ -18,5 +18,5 @@ var (
 	OptionTTL            = options.NewUint8Option(optionNameTTL)
 	OptionSendQueueSize  = options.NewUint16Option(optionNameSendQueueSize)
 	OptionSendBestEffort = options.NewBoolOption(optionNameSendBestEffort)
-	OptionSendDeadline   = options.NewTimeDurationOption(optionNameSendDeadline)
+	OptionSendTimeout    = options.NewTimeDurationOption(optionNameSendTimeout)
 )

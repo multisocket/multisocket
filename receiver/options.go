@@ -8,11 +8,11 @@ type optionName int
 
 const (
 	optionNameRecvQueueSize optionName = iota
-	optionNameRecvDeadline
+	optionNameRecvTimeout
 )
 
 // Options
 var (
 	OptionRecvQueueSize = options.NewUint16Option(optionNameRecvQueueSize)
-	OptionRecvDeadline  = options.NewTimeDurationOption(optionNameRecvDeadline)
+	OptionRecvTimeout  = options.NewTimeDurationOption(optionNameRecvTimeout)
 )
