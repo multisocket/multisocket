@@ -25,8 +25,6 @@ type (
 )
 
 const (
-	// defaultMaxRxMsgSize is the default maximum Rx Msg size
-	defaultMaxRxMsgSize = 1024 * 1024
 	// -1 no limit
 	defaultConnLimit = -1
 )
@@ -238,7 +236,6 @@ func (c *connector) NewDialer(addr string, opts options.Options) (d multisocket.
 	if td, err = t.NewDialer(addr); err != nil {
 		return
 	}
-	td.SetOption(transport.OptionMaxRecvMsgSize, defaultMaxRxMsgSize)
 
 	xd := newDialer(c, td)
 	if c.limit != -1 && c.limit <= len(c.pipes) {
