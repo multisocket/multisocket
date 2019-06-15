@@ -1,7 +1,7 @@
 package connector
 
 import (
-	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/errors"
 )
 
 type err string
@@ -12,7 +12,7 @@ func (e err) Error() string {
 
 // errors
 const (
-	ErrAddrInUse = err("address in use")
-	ErrClosed    = multisocket.ErrClosed
-	ErrTimeout   = multisocket.ErrTimeout
+	ErrClosed    = errors.ErrClosed
+	ErrTimeout   = errors.ErrTimeout
+	ErrAddrInUse = errors.ErrAddrInUse
 )

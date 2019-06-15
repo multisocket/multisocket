@@ -12,8 +12,8 @@ import (
 // pipe wraps the transport.Connection data structure with the stuff we need to keep.
 // It implements the Pipe interface.
 type pipe struct {
-	sendDeadline time.Duration
-	recvDeadline time.Duration
+	sendTimeout time.Duration
+	recvTimeout time.Duration
 
 	sync.Mutex
 	id     uint32
@@ -28,13 +28,13 @@ var pipeID = utils.NewRecyclableIDGenerator()
 
 func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener) *pipe {
 	return &pipe{
-		sendDeadline: PipeOptionSendDeadline.Value(parent.GetOptionDefault(PipeOptionSendDeadline, time.Duration(0))),
-		recvDeadline: PipeOptionRecvDeadline.Value(parent.GetOptionDefault(PipeOptionRecvDeadline, time.Duration(0))),
-		id:           pipeID.NextID(),
-		parent:       parent,
-		c:            tc,
-		d:            d,
-		l:            l,
+		sendTimeout: PipeOptionSendTimeout.Value(parent.GetOptionDefault(PipeOptionSendTimeout, time.Duration(0))),
+		recvTimeout: PipeOptionRecvTimeout.Value(parent.GetOptionDefault(PipeOptionRecvTimeout, time.Duration(0))),
+		id:          pipeID.NextID(),
+		parent:      parent,
+		c:           tc,
+		d:           d,
+		l:           l,
 	}
 }
 
@@ -74,11 +74,11 @@ func (p *pipe) Close() {
 }
 
 func (p *pipe) Send(msg []byte, extras ...[]byte) (err error) {
-	return p.SendTimeout(p.sendDeadline, msg, extras...)
+	return p.SendTimeout(p.sendTimeout, msg, extras...)
 }
 
-func (p *pipe) SendTimeout(deadline time.Duration, msg []byte, extras ...[]byte) (err error) {
-	if deadline <= 0 {
+func (p *pipe) SendTimeout(timeout time.Duration, msg []byte, extras ...[]byte) (err error) {
+	if timeout <= 0 {
 		if err = p.c.Send(msg, extras...); err != nil {
 			// NOTE: close on any error
 			go p.Close()
@@ -87,7 +87,7 @@ func (p *pipe) SendTimeout(deadline time.Duration, msg []byte, extras ...[]byte)
 		return
 	}
 
-	tq := time.After(deadline)
+	tq := time.After(timeout)
 	done := make(chan struct{})
 
 	go func() {
@@ -107,11 +107,11 @@ func (p *pipe) SendTimeout(deadline time.Duration, msg []byte, extras ...[]byte)
 }
 
 func (p *pipe) Recv() (msg []byte, err error) {
-	return p.RecvTimeout(p.recvDeadline)
+	return p.RecvTimeout(p.recvTimeout)
 }
 
-func (p *pipe) RecvTimeout(deadline time.Duration) (msg []byte, err error) {
-	if deadline <= 0 {
+func (p *pipe) RecvTimeout(timeout time.Duration) (msg []byte, err error) {
+	if timeout <= 0 {
 		if msg, err = p.c.Recv(); err != nil {
 			// NOTE: close on any error
 			go p.Close()
@@ -120,7 +120,7 @@ func (p *pipe) RecvTimeout(deadline time.Duration) (msg []byte, err error) {
 		return
 	}
 
-	tq := time.After(deadline)
+	tq := time.After(timeout)
 	done := make(chan struct{})
 	go func() {
 		if msg, err = p.c.Recv(); err != nil {

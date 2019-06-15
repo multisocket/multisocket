@@ -50,7 +50,7 @@ func NewWithLimitAndOptions(limit int, ovs ...*options.OptionValue) multisocket.
 		pipes:             make(map[uint32]*pipe),
 		pipeEventHandlers: make(map[multisocket.PipeEventHandler]struct{}),
 	}
-	c.Options = options.NewOptionsWithAccepts(OptionConnLimit, PipeOptionSendDeadline, PipeOptionRecvDeadline).SetOptionChangeHook(c.onOptionChange)
+	c.Options = options.NewOptionsWithAccepts(OptionConnLimit, PipeOptionSendTimeout, PipeOptionRecvTimeout).SetOptionChangeHook(c.onOptionChange)
 	for _, ov := range ovs {
 		c.SetOption(ov.Option, ov.Value)
 	}
@@ -231,7 +231,7 @@ func (c *connector) NewDialer(addr string, opts options.Options) (d multisocket.
 	)
 
 	if t = transport.GetTransportFromAddr(addr); t == nil {
-		err = transport.ErrBadTran
+		err = transport.ErrBadTransport
 		return
 	}
 
@@ -283,7 +283,7 @@ func (c *connector) NewListener(addr string, opts options.Options) (l multisocke
 	)
 
 	if t = transport.GetTransportFromAddr(addr); t == nil {
-		err = transport.ErrBadTran
+		err = transport.ErrBadTransport
 		return
 	}
 

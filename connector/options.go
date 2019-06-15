@@ -11,8 +11,8 @@ const (
 	dialerOptionNameMinReconnectTime
 	dialerOptionNameMaxReconnectTime
 	dialerOptionNameDialAsync
-	pipeOptionSendDeadline
-	pipeOptionRecvDeadline
+	pipeOptionSendTimeout
+	pipeOptionRecvTimeout
 )
 
 // Options
@@ -21,6 +21,6 @@ var (
 	DialerOptionMinReconnectTime = options.NewTimeDurationOption(dialerOptionNameMinReconnectTime)
 	DialerOptionMaxReconnectTime = options.NewTimeDurationOption(dialerOptionNameMaxReconnectTime)
 	DialerOptionDialAsync        = options.NewBoolOption(dialerOptionNameDialAsync)
-	PipeOptionSendDeadline       = options.NewTimeDurationOption(pipeOptionSendDeadline)
-	PipeOptionRecvDeadline       = options.NewTimeDurationOption(pipeOptionRecvDeadline)
+	PipeOptionSendTimeout        = options.NewTimeDurationOption(pipeOptionSendTimeout)
+	PipeOptionRecvTimeout        = options.NewTimeDurationOption(pipeOptionRecvTimeout)
 )
