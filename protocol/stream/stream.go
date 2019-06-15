@@ -121,7 +121,7 @@ RUNNING:
 				continue
 			}
 
-			conn = s.findConn(id)
+			conn = s.getConn(id)
 			if conn == nil {
 				if log.IsLevelEnabled(log.DebugLevel) {
 					log.WithField("domain", "stream").
@@ -161,7 +161,7 @@ RUNNING:
 	}
 }
 
-func (s *stream) findConn(id uint32) (c *connection) {
+func (s *stream) getConn(id uint32) (c *connection) {
 	s.RLock()
 	c = s.conns[id]
 	s.RUnlock()
@@ -208,7 +208,7 @@ func (s *stream) Connect(timeout time.Duration) (conn Connection, err error) {
 			Info("Connect")
 	}
 
-	if err = c.connect(); err != nil {
+	if err = c.sendConnect(); err != nil {
 		return
 	}
 
@@ -276,7 +276,7 @@ func (s *stream) newConnection(src multisocket.MsgPath) *connection {
 }
 
 // used to start a stream connection
-func (conn *connection) connect() error {
+func (conn *connection) sendConnect() error {
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "stream").
 			WithField("streamID", conn.id).

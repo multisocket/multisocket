@@ -91,15 +91,11 @@ func (rs *RawToStream) run() {
 				WithFields(log.Fields{"content": msg.Content}).
 				Debug("run")
 		}
+		// use msg's pipe's id as PipcConn ID
 		pid, _ := msg.Source.CurID()
-		rs.Lock()
-		pc := rs.pipeConns[pid]
-		rs.Unlock()
+		pc := rs.getPipeConn(pid)
 		if pc == nil {
 			pc = rs.newPipeConn(pid)
-			rs.Lock()
-			rs.pipeConns[pid] = pc
-			rs.Unlock()
 			go rs.runPipeConn(pc)
 		}
 		select {
@@ -120,6 +116,13 @@ func (rs *RawToStream) Close() {
 	rs.rawSock.Close()
 }
 
+func (rs *RawToStream) getPipeConn(id uint32) *pipeConn {
+	rs.Lock()
+	pc := rs.pipeConns[id]
+	rs.Unlock()
+	return pc
+}
+
 func (rs *RawToStream) newPipeConn(id uint32) *pipeConn {
 	pc := &pipeConn{
 		id:      id,
@@ -130,6 +133,10 @@ func (rs *RawToStream) newPipeConn(id uint32) *pipeConn {
 	}
 
 	binary.BigEndian.PutUint32(pc.dest[:4], id)
+
+	rs.Lock()
+	rs.pipeConns[id] = pc
+	rs.Unlock()
 
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "RawToStream").
@@ -166,22 +173,24 @@ func (rs *RawToStream) runPipeConn(pc *pipeConn) {
 			Debug("runPipeConn")
 	}
 
-	dest := multisocket.MsgPath(nil)
-	dest = dest.AddSource(pc.dest)
+	dest := multisocket.MsgPath(nil).AddSource(pc.dest)
 	// stream to raw
 	go func() {
 		var (
-			err error
-			n   int
-			p   = make([]byte, 4*1024)
+			closed bool
+			err    error
+			n      int
+			p      = make([]byte, 4*1024)
 		)
 		msg := multisocket.NewMessage(multisocket.SendTypeToDest, dest, 0, nil)
 		for {
 			// if stream close, read will return error
 			if n, err = pc.conn.Read(p); n > 0 {
+				closed = err != nil
 				msg.Content = p[:n]
 				err = pc.s.SendMsg(msg)
 			}
+			closed = closed || err != nil
 
 			if err != nil {
 				pc.close()
