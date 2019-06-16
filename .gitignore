@@ -4,7 +4,11 @@
 *.dll
 *.so
 *.dylib
-/app
+
+# examples
+examples/**/*
+!examples/**/
+!examples/**/*.go
 
 # Test binary, build with `go test -c`
 *.test
