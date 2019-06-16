@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/webee/multisocket/message"
+
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
 
@@ -14,7 +16,6 @@ import (
 	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/receiver"
 	"github.com/webee/multisocket/sender"
-	. "github.com/webee/multisocket/types"
 )
 
 type (
@@ -22,17 +23,17 @@ type (
 	RawToStream struct {
 		sync.Mutex
 		stream    Stream
-		rawSock   Socket
+		rawSock   multisocket.Socket
 		pipeConns map[uint32]*pipeConn
 	}
 
 	pipeConn struct {
 		id      uint32
 		dest    [4]byte
-		s       Socket
+		s       multisocket.Socket
 		conn    Connection
 		closedq chan struct{}
-		recvq   chan *Message
+		recvq   chan *message.Message
 	}
 )
 
@@ -74,7 +75,7 @@ func (rs *RawToStream) RawListen(addr string) error {
 func (rs *RawToStream) run() {
 	var (
 		err error
-		msg *Message
+		msg *message.Message
 	)
 
 	if log.IsLevelEnabled(log.DebugLevel) {
@@ -130,7 +131,7 @@ func (rs *RawToStream) newPipeConn(id uint32) *pipeConn {
 		dest:    [4]byte{},
 		s:       rs.rawSock,
 		closedq: make(chan struct{}),
-		recvq:   make(chan *Message, 64),
+		recvq:   make(chan *message.Message, 64),
 	}
 
 	binary.BigEndian.PutUint32(pc.dest[:4], id)
@@ -174,7 +175,7 @@ func (rs *RawToStream) runPipeConn(pc *pipeConn) {
 			Debug("runPipeConn")
 	}
 
-	dest := MsgPath(nil).AddSource(pc.dest)
+	dest := message.MsgPath(nil).AddSource(pc.dest)
 	// stream to raw
 	go func() {
 		var (
@@ -183,7 +184,7 @@ func (rs *RawToStream) runPipeConn(pc *pipeConn) {
 			n      int
 			p      = make([]byte, 4*1024)
 		)
-		msg := NewMessage(SendTypeToDest, dest, 0, nil)
+		msg := message.NewMessage(message.SendTypeToDest, dest, 0, nil)
 		for {
 			// if stream close, read will return error
 			if n, err = pc.conn.Read(p); n > 0 {
@@ -201,7 +202,7 @@ func (rs *RawToStream) runPipeConn(pc *pipeConn) {
 	}()
 
 	// raw to stream
-	testMsg := NewMessage(SendTypeToDest, dest, 0, nil)
+	testMsg := message.NewMessage(message.SendTypeToDest, dest, 0, nil)
 	tq := time.After(5 * time.Second)
 RAW_TO_STREAM:
 	for {

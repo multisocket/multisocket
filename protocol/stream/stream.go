@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/webee/multisocket/message"
+
 	"github.com/webee/multisocket/utils"
 
 	log "github.com/sirupsen/logrus"
@@ -16,13 +18,12 @@ import (
 
 	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/errs"
-	. "github.com/webee/multisocket/types"
 )
 
 type (
 	stream struct {
 		options.Options
-		Socket
+		multisocket.Socket
 
 		sync.RWMutex
 		closedq chan struct{}
@@ -36,9 +37,9 @@ type (
 	connection struct {
 		id      uint32
 		closedq chan struct{}
-		recvq   chan *Message
+		recvq   chan *message.Message
 		s       *stream
-		src     MsgPath
+		src     message.MsgPath
 		dest    [4]byte
 		pr      *io.PipeReader
 		pw      *io.PipeWriter
@@ -100,7 +101,7 @@ func (s *stream) run() {
 		id   uint32
 		ok   bool
 		err  error
-		msg  *Message
+		msg  *message.Message
 		conn *connection
 	)
 RUNNING:
@@ -117,7 +118,7 @@ RUNNING:
 				WithField("content", msg.Content).Info("recv")
 		}
 		switch msg.Header.SendType() {
-		case SendTypeToDest:
+		case message.SendTypeToDest:
 			// find stream
 			if id, ok = msg.Destination.CurID(); !ok {
 				continue
@@ -261,12 +262,12 @@ func (s *stream) Close() error {
 	}
 }
 
-func (s *stream) newConnection(src MsgPath) *connection {
+func (s *stream) newConnection(src message.MsgPath) *connection {
 	pr, pw := io.Pipe()
 	conn := &connection{
 		id:      pipeStreamID.NextID(),
 		closedq: make(chan struct{}),
-		recvq:   make(chan *Message, s.streamRecvQueueSize),
+		recvq:   make(chan *message.Message, s.streamRecvQueueSize),
 		s:       s,
 		src:     src,
 		dest:    [4]byte{},
@@ -285,7 +286,7 @@ func (conn *connection) sendConnect() error {
 			Info(">>connect")
 	}
 
-	msg := NewMessage(SendTypeToOne, nil, MsgFlagControl, []byte(ControlMsgKeepAlive))
+	msg := message.NewMessage(message.SendTypeToOne, nil, message.MsgFlagControl, []byte(ControlMsgKeepAlive))
 	msg.AddSource(conn.dest)
 	return conn.s.SendMsg(msg)
 }
@@ -297,7 +298,7 @@ func (conn *connection) sendKeepAlive() error {
 			Info(">keepAlive")
 	}
 
-	msg := NewMessage(SendTypeToDest, conn.src, MsgFlagControl, []byte(ControlMsgKeepAlive))
+	msg := message.NewMessage(message.SendTypeToDest, conn.src, message.MsgFlagControl, []byte(ControlMsgKeepAlive))
 	msg.AddSource(conn.dest)
 	return conn.s.SendMsg(msg)
 }
@@ -309,7 +310,7 @@ func (conn *connection) sendKeepAliveAck() error {
 			Info(">keepAliveAck")
 	}
 
-	msg := NewMessage(SendTypeToDest, conn.src, MsgFlagControl, []byte(ControlMsgKeepAliveAck))
+	msg := message.NewMessage(message.SendTypeToDest, conn.src, message.MsgFlagControl, []byte(ControlMsgKeepAliveAck))
 	msg.AddSource(conn.dest)
 	return conn.s.SendMsg(msg)
 }
@@ -322,7 +323,7 @@ func (conn *connection) run() {
 	}
 
 	var (
-		msg            *Message
+		msg            *message.Message
 		keepAliveTq    <-chan time.Time
 		keepAliveAckTq <-chan time.Time
 	)
@@ -338,7 +339,7 @@ RUNNING:
 		case <-conn.closedq:
 			break RUNNING
 		case msg = <-conn.recvq:
-			if msg.Header.HasFlags(MsgFlagControl) {
+			if msg.Header.HasFlags(message.MsgFlagControl) {
 				// handle control msg
 				switch string(msg.Content) {
 				case ControlMsgKeepAlive:
@@ -439,7 +440,7 @@ func (conn *connection) Write(p []byte) (n int, err error) {
 
 	// NOTE: Writer must not retain p
 	content := append([]byte(nil), p...)
-	msg := NewMessage(SendTypeToDest, conn.src, 0, content)
+	msg := message.NewMessage(message.SendTypeToDest, conn.src, 0, content)
 	msg.AddSource(conn.dest)
 	if err = conn.s.SendMsg(msg); err != nil {
 		conn.Close()

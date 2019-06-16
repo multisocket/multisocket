@@ -5,18 +5,19 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/webee/multisocket/message"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/receiver"
 	"github.com/webee/multisocket/sender"
-	. "github.com/webee/multisocket/types"
 )
 
 type (
 	rep struct {
-		Socket
+		multisocket.Socket
 		handler Handler
 		runner  Runner
 
@@ -66,7 +67,7 @@ func (r *rep) Close() error {
 func (r *rep) run() {
 	var (
 		err error
-		msg *Message
+		msg *message.Message
 	)
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("action", "start").Debug("run")
@@ -83,7 +84,7 @@ func (r *rep) run() {
 	}
 }
 
-func (r *rep) handle(msg *Message) {
+func (r *rep) handle(msg *message.Message) {
 	requestID := msg.Content[:4]
 	if log.IsLevelEnabled(log.TraceLevel) {
 		log.WithFields(log.Fields{"requestID": binary.BigEndian.Uint32(requestID), "source": fmt.Sprintf("0x%x", msg.Source)}).

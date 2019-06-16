@@ -4,15 +4,16 @@ import (
 	"io"
 	"time"
 
+	"github.com/webee/multisocket/connector"
+
 	"github.com/webee/multisocket/options"
-	. "github.com/webee/multisocket/types"
 )
 
 type (
 	// Stream is the Stream protocol
 	Stream interface {
 		options.Options
-		ConnectorAction
+		connector.ConnectorAction
 		Close() error
 
 		Connect(timeout time.Duration) (conn Connection, err error)

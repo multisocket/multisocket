@@ -1,4 +1,0 @@
-package multisocket
-
-func init() {
-}

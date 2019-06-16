@@ -5,8 +5,8 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/webee/multisocket/message"
 	"github.com/webee/multisocket/options"
-	. "github.com/webee/multisocket/types"
 )
 
 type (
@@ -42,12 +42,12 @@ func init() {
 }
 
 // New create a receiver.
-func New() Receiver {
+func New() *receiver {
 	return NewWithOptions()
 }
 
 // NewWithOptions create a normal receiver with options.
-func NewWithOptions(ovs ...*options.OptionValue) Receiver {
+func NewWithOptions(ovs ...*options.OptionValue) *receiver {
 	r := &receiver{
 		Options:            options.NewOptions(),
 		attachedConnectors: make(map[Connector]struct{}),
@@ -129,7 +129,7 @@ func (p *pipe) recvRawMsg() (msg *Message, err error) {
 		return
 	}
 
-	msg = NewMessage(SendTypeToOne, nil, 0, payload)
+	msg = message.NewMessage(SendTypeToOne, nil, 0, payload)
 	msg.Source = msg.Source.AddID(p.p.ID())
 	msg.Header.Hops = msg.Source.Length()
 
@@ -206,7 +206,7 @@ func (r *receiver) run(p *pipe) {
 
 		// NOTE:
 		// send a empty control to make a connection
-		msg := NewMessage(SendTypeToOne, nil, MsgFlagControl, nil)
+		msg := message.NewMessage(SendTypeToOne, nil, message.MsgFlagControl, nil)
 		// update source, add current pipe id
 		msg.Source = msg.Source.AddID(p.p.ID())
 		msg.Header.Hops = msg.Source.Length()

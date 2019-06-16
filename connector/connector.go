@@ -8,7 +8,6 @@ import (
 	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
-	. "github.com/webee/multisocket/types"
 )
 
 type (
@@ -31,17 +30,17 @@ const (
 )
 
 // New create a any Connector
-func New() Connector {
+func New() *connector {
 	return NewWithOptions()
 }
 
 // NewWithOptions create a Connector with options
-func NewWithOptions(ovs ...*options.OptionValue) Connector {
+func NewWithOptions(ovs ...*options.OptionValue) *connector {
 	return NewWithLimitAndOptions(defaultConnLimit, ovs...)
 }
 
 // NewWithLimitAndOptions create a Connector with limit and options
-func NewWithLimitAndOptions(limit int, ovs ...*options.OptionValue) Connector {
+func NewWithLimitAndOptions(limit int, ovs ...*options.OptionValue) *connector {
 	c := &connector{
 		limit:             limit,
 		dialers:           make(map[*dialer]struct{}),

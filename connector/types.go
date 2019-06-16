@@ -1,36 +1,9 @@
-package types
+package connector
 
 import (
 	"time"
 
 	"github.com/webee/multisocket/options"
-)
-
-type (
-	// Socket is a network peer
-	Socket interface {
-		ConnectorAction
-		SenderAction
-		ReceiverAction
-
-		Close() error
-	}
-
-	// Dialer is for connecting a listening socket.
-	Dialer interface {
-		options.Options
-
-		Dial() error
-		Close() error
-	}
-
-	// Listener is for listening and accepting connections.
-	Listener interface {
-		options.Options
-
-		Listen() error
-		Close() error
-	}
 )
 
 type (
@@ -73,6 +46,22 @@ type (
 		Negotiate(pipe Pipe) error
 	}
 
+	// Dialer is for connecting a listening socket.
+	Dialer interface {
+		options.Options
+
+		Dial() error
+		Close() error
+	}
+
+	// Listener is for listening and accepting connections.
+	Listener interface {
+		options.Options
+
+		Listen() error
+		Close() error
+	}
+
 	// ConnectorAction is connector's action
 	ConnectorAction interface {
 		SetNegotiator(Negotiator)
@@ -98,35 +87,5 @@ type (
 		Close()
 		RegisterPipeEventHandler(PipeEventHandler)
 		UnregisterPipeEventHandler(PipeEventHandler)
-	}
-
-	// SenderAction is sender's action
-	SenderAction interface {
-		SendTo(dest MsgPath, content []byte, extras ...[]byte) error // for reply send
-		Send(content []byte, extras ...[]byte) error                 // for initiative send one
-		SendAll(content []byte, extras ...[]byte) error              // for initiative send all
-		SendMsg(msg *Message) error
-	}
-
-	// Sender controls socket's send.
-	Sender interface {
-		options.Options
-		AttachConnector(Connector)
-		SenderAction
-		Close()
-	}
-
-	// ReceiverAction is receiver's action
-	ReceiverAction interface {
-		RecvMsg() (*Message, error)
-		Recv() ([]byte, error)
-	}
-
-	// Receiver controls socket's recv.
-	Receiver interface {
-		options.Options
-		AttachConnector(Connector)
-		ReceiverAction
-		Close()
 	}
 )

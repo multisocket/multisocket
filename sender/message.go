@@ -1,9 +1,5 @@
 package sender
 
-import (
-	. "github.com/webee/multisocket/types"
-)
-
 func newMessage(sendType uint8, ttl uint8, dest MsgPath, content []byte, extras [][]byte) *Message {
 	header := &MsgHeader{Flags: sendType, TTL: ttl, Hops: 0}
 	if sendType == SendTypeToDest {

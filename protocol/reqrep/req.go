@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/webee/multisocket/message"
 	"github.com/webee/multisocket/options"
 
 	log "github.com/sirupsen/logrus"
@@ -14,12 +15,11 @@ import (
 	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/receiver"
 	"github.com/webee/multisocket/sender"
-	. "github.com/webee/multisocket/types"
 )
 
 type (
 	req struct {
-		Socket
+		multisocket.Socket
 		timeout time.Duration
 
 		sync.Mutex
@@ -58,7 +58,7 @@ func (r *req) run() {
 	var (
 		err     error
 		ok      bool
-		msg     *Message
+		msg     *message.Message
 		request *Request
 	)
 	if log.IsLevelEnabled(log.DebugLevel) {

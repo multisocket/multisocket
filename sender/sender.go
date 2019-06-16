@@ -4,9 +4,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/webee/multisocket/message"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket/options"
-	. "github.com/webee/multisocket/types"
 )
 
 type (
@@ -29,7 +30,7 @@ type (
 )
 
 const (
-	defaultMsgTTL        = DefaultMsgTTL
+	defaultMsgTTL        = message.DefaultMsgTTL
 	defaultSendQueueSize = uint16(64)
 )
 
@@ -38,12 +39,12 @@ var (
 )
 
 // New create a sender
-func New() Sender {
+func New() *sender {
 	return NewWithOptions()
 }
 
 // NewWithOptions create a sender with options
-func NewWithOptions(ovs ...*options.OptionValue) Sender {
+func NewWithOptions(ovs ...*options.OptionValue) *sender {
 	s := &sender{
 		Options:            options.NewOptions(),
 		attachedConnectors: make(map[Connector]struct{}),

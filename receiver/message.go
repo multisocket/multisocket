@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	. "github.com/webee/multisocket/types"
+	"github.com/webee/multisocket/message"
 )
 
 const (
-	defaultMsgTTL = DefaultMsgTTL
+	defaultMsgTTL = message.DefaultMsgTTL
 )
 
 func newHeaderFromBytes(payload []byte) (header *MsgHeader, err error) {

@@ -7,7 +7,6 @@ import (
 	"github.com/webee/multisocket/receiver"
 
 	"github.com/webee/multisocket/errs"
-	. "github.com/webee/multisocket/types"
 )
 
 type socket struct {
