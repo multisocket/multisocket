@@ -1,7 +1,7 @@
 package transport
 
 import (
-	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/errors"
 )
 
 type err string
@@ -12,9 +12,11 @@ func (e err) Error() string {
 
 // errors
 const (
-	ErrClosed                = multisocket.ErrClosed
-	ErrOperationNotSupported = multisocket.ErrOperationNotSupported
-	ErrBadTran               = err("invalid or unsupported transport")
-	ErrBadMsg                = err("bad message")
-	ErrMsgTooLong            = err("message is too long")
+	ErrClosed                = errors.ErrClosed
+	ErrOperationNotSupported = errors.ErrOperationNotSupported
+	ErrBadTransport          = errors.ErrBadTransport
+	ErrBadMsg                = errors.ErrBadMsg
+	ErrMsgTooLong            = errors.ErrMsgTooLong
+	ErrConnRefused           = err("connection refused")
+	ErrNotListening          = err("not listening")
 )

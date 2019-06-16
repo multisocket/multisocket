@@ -48,8 +48,8 @@ func (conn *rawConnection) Send(msg []byte, extras ...[]byte) (err error) {
 	return nil
 }
 
-// NewRawConnection allocates a new Connection using the supplied net.Conn
-func NewRawConnection(transport Transport, c net.Conn, opts options.Options) (Connection, error) {
+// newRawConnection allocates a new Connection using the supplied net.Conn
+func newRawConnection(transport Transport, c PrimitiveConnection, opts options.Options) (Connection, error) {
 	conn := &rawConnection{
 		connection: connection{
 			transport: transport,

@@ -14,7 +14,7 @@ import (
 type connection struct {
 	transport Transport
 	raw       bool
-	c         net.Conn
+	c         PrimitiveConnection
 	maxrx     uint32
 
 	sync.Mutex
@@ -98,17 +98,26 @@ func (conn *connection) Close() error {
 }
 
 func (conn *connection) LocalAddress() string {
-	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.c.LocalAddr().String())
+	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.c.LocalAddress())
 }
 
 func (conn *connection) RemoteAddress() string {
-	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.c.RemoteAddr().String())
+	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.c.RemoteAddress())
+}
+
+// PrimitiveConnection is primitive connection made by transport.
+type PrimitiveConnection interface {
+	Read(b []byte) (n int, err error)
+	Write(b []byte) (n int, err error)
+	Close() error
+	LocalAddress() string
+	RemoteAddress() string
 }
 
 // NewConnection allocates a new Connection using the supplied net.Conn
-func NewConnection(transport Transport, c net.Conn, opts options.Options) (Connection, error) {
+func NewConnection(transport Transport, c PrimitiveConnection, opts options.Options) (Connection, error) {
 	if OptionConnRawMode.Value(opts.GetOptionDefault(OptionConnRawMode, false)) {
-		return NewRawConnection(transport, c, opts)
+		return newRawConnection(transport, c, opts)
 	}
 
 	conn := &connection{
