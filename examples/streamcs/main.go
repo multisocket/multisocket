@@ -1,12 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"time"
-
-	"github.com/webee/multisocket/connector"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket/protocol/stream"
@@ -76,7 +73,6 @@ func client(protoStream stream.Stream) {
 		err  error
 		conn io.ReadWriteCloser
 	)
-	fmt.Println(connector.ErrClosed)
 	if conn, err = protoStream.Connect(0); err != nil {
 		log.WithField("err", err).Panic("connect")
 	}

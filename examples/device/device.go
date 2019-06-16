@@ -66,11 +66,9 @@ func forward(from multisocket.Socket, to multisocket.Socket) {
 	for {
 		if msg, err = from.RecvMsg(); err != nil {
 			log.WithField("err", err).Errorf("recv")
-			return
 		}
 		if err = to.SendMsg(msg); err != nil {
 			log.WithField("err", err).Errorf("forward")
-			return
 		}
 	}
 }

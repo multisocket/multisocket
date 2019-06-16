@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -76,14 +77,22 @@ func server(t, addr, rawAddr string) {
 				log.WithField("err", err).Errorf("recv")
 				continue
 			}
-			content := []byte(fmt.Sprintf("[#%d]Hello, %s", n, string(msg.Content)))
-			if err = sock.SendTo(msg.Source, content); err != nil {
-				log.WithField("err", err).Errorf("send")
+
+			s := string(msg.Content)
+			if strings.HasPrefix(s, "quit") {
+				if err = sock.SendMsg(multisocket.NewControlMessage(multisocket.ControlTypeClosePeer, multisocket.SendTypeReply, msg.Source)); err != nil {
+					log.WithField("err", err).Errorf("send control")
+				}
+			} else {
+				content := []byte(fmt.Sprintf("[#%d]Hello, %s", n, s))
+				if err = sock.SendTo(msg.Source, content); err != nil {
+					log.WithField("err", err).Errorf("send")
+				}
 			}
 		}
 	}
 	go worker(0)
-	go worker(1)
+	// go worker(1)
 
 	setupSignal()
 }
@@ -115,9 +124,15 @@ func client(t, addr string, name string) {
 	}
 
 	go func() {
+		var content string
 		idx := 0
 		for {
-			if err = sock.Send([]byte(fmt.Sprintf("%s#%d", name, idx))); err != nil {
+			if idx%4 == 0 {
+				content = "quitxxx"
+			} else {
+				content = fmt.Sprintf("%s#%d", name, idx)
+			}
+			if err = sock.Send([]byte(content)); err != nil {
 				log.WithField("err", err).Errorf("send")
 			}
 			log.WithField("id", idx).Infof("send")

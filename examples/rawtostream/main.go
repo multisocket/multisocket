@@ -1,11 +1,9 @@
 package main
 
 import (
-	"net/http"
-	"net/http/pprof"
 	"os"
-	"os/signal"
-	"syscall"
+
+	"github.com/webee/multisocket/examples"
 
 	"github.com/webee/multisocket/protocol/stream"
 
@@ -37,39 +35,7 @@ func main() {
 		log.WithError(err).Panic("stream listen")
 	}
 
-	// startPProfListen("localhost:6070")
+	examples.StartPProfListen("localhost:6070")
 
-	setupSignal()
-}
-
-// setupSignal register signals handler and waiting for.
-func setupSignal() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	for {
-		s := <-c
-		log.WithField("signal", s.String()).Info("signal")
-		switch s {
-		case os.Interrupt, syscall.SIGTERM:
-			return
-		default:
-			return
-		}
-	}
-}
-
-// startPProfListen start debug pprof listening.
-func startPProfListen(addr string) {
-	serverMux := http.NewServeMux()
-	serverMux.HandleFunc("/debug/pprof/", pprof.Index)
-	serverMux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	serverMux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	serverMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	serverMux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	go func() {
-		log.Println("pprof listening:", addr)
-		if err := http.ListenAndServe(addr, serverMux); err != nil {
-			log.Panicln("pprof listening:", err)
-		}
-	}()
+	examples.SetupSignal()
 }
