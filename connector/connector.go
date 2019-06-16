@@ -30,17 +30,17 @@ const (
 )
 
 // New create a any Connector
-func New() *connector {
+func New() Connector {
 	return NewWithOptions()
 }
 
 // NewWithOptions create a Connector with options
-func NewWithOptions(ovs ...*options.OptionValue) *connector {
+func NewWithOptions(ovs ...*options.OptionValue) Connector {
 	return NewWithLimitAndOptions(defaultConnLimit, ovs...)
 }
 
 // NewWithLimitAndOptions create a Connector with limit and options
-func NewWithLimitAndOptions(limit int, ovs ...*options.OptionValue) *connector {
+func NewWithLimitAndOptions(limit int, ovs ...*options.OptionValue) Connector {
 	c := &connector{
 		limit:             limit,
 		dialers:           make(map[*dialer]struct{}),

@@ -39,12 +39,12 @@ var (
 )
 
 // New create a sender
-func New() *sender {
+func New() Sender {
 	return NewWithOptions()
 }
 
 // NewWithOptions create a sender with options
-func NewWithOptions(ovs ...*options.OptionValue) *sender {
+func NewWithOptions(ovs ...*options.OptionValue) Sender {
 	s := &sender{
 		Options:            options.NewOptions(),
 		attachedConnectors: make(map[Connector]struct{}),

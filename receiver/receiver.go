@@ -42,12 +42,12 @@ func init() {
 }
 
 // New create a receiver.
-func New() *receiver {
+func New() Receiver {
 	return NewWithOptions()
 }
 
 // NewWithOptions create a normal receiver with options.
-func NewWithOptions(ovs ...*options.OptionValue) *receiver {
+func NewWithOptions(ovs ...*options.OptionValue) Receiver {
 	r := &receiver{
 		Options:            options.NewOptions(),
 		attachedConnectors: make(map[Connector]struct{}),
