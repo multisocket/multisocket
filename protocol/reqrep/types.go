@@ -3,7 +3,7 @@ package reqrep
 import (
 	"time"
 
-	"github.com/webee/multisocket"
+	. "github.com/webee/multisocket/types"
 )
 
 type (
@@ -17,7 +17,7 @@ type (
 
 	// Req is the Req protocol
 	Req interface {
-		multisocket.ConnectorAction
+		ConnectorAction
 
 		// actions
 		Request(content []byte) ([]byte, error)
@@ -37,7 +37,7 @@ type (
 
 	// Rep is the Rep protocol
 	Rep interface {
-		multisocket.ConnectorAction
+		ConnectorAction
 
 		// actions
 		SetRunner(runner Runner)

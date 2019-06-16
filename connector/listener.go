@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
 )
@@ -62,7 +63,7 @@ func (l *listener) serve() {
 	for {
 		// If the underlying PipeListener is closed, or not
 		// listening, we expect to return back with an error.
-		if tc, err := l.l.Accept(); err == transport.ErrClosed {
+		if tc, err := l.l.Accept(); err == errs.ErrClosed {
 			return
 		} else if err == nil {
 			if l.isStopped() {
@@ -90,7 +91,7 @@ func (l *listener) Close() error {
 	l.Lock()
 	defer l.Unlock()
 	if l.closed {
-		return ErrClosed
+		return errs.ErrClosed
 	}
 	l.closed = true
 	return l.l.Close()

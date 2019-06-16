@@ -5,8 +5,8 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/options"
+	. "github.com/webee/multisocket/types"
 )
 
 type (
@@ -28,20 +28,8 @@ type (
 	}
 )
 
-// Type aliases
-type (
-	// Message is message
-	Message = multisocket.Message
-	// Connector is connector
-	Connector = multisocket.Connector
-	// Sender is sender
-	Sender = multisocket.Sender
-	// Pipe is pipe
-	Pipe = multisocket.Pipe
-)
-
 const (
-	defaultMsgTTL        = multisocket.DefaultMsgTTL
+	defaultMsgTTL        = DefaultMsgTTL
 	defaultSendQueueSize = uint16(64)
 )
 
@@ -144,11 +132,11 @@ func (s *sender) sendTimeout() time.Duration {
 	return OptionSendTimeout.Value(s.GetOptionDefault(OptionSendTimeout, time.Duration(0)))
 }
 
-func (s *sender) HandlePipeEvent(e multisocket.PipeEvent, pipe Pipe) {
+func (s *sender) HandlePipeEvent(e PipeEvent, pipe Pipe) {
 	switch e {
-	case multisocket.PipeEventAdd:
+	case PipeEventAdd:
 		s.addPipe(pipe)
-	case multisocket.PipeEventRemove:
+	case PipeEventRemove:
 		s.remPipe(pipe.ID())
 	}
 }
@@ -191,7 +179,7 @@ func (p *pipe) close() {
 }
 
 func (s *sender) resendMsg(msg *Message) {
-	if msg.Header.SendType() == multisocket.SendTypeToOne {
+	if msg.Header.SendType() == SendTypeToOne {
 		// only resend when send one, so we can choose another pipe to send.
 		s.SendMsg(msg)
 	}
@@ -242,11 +230,11 @@ SENDING:
 	}
 }
 
-func (p *pipe) sendMsg(msg *multisocket.Message) error {
+func (p *pipe) sendMsg(msg *Message) error {
 	return p.p.Send(nil, msg.Encode()...)
 }
 
-func (p *pipe) sendRawMsg(msg *multisocket.Message) (err error) {
+func (p *pipe) sendRawMsg(msg *Message) (err error) {
 	if msg.Header.HasAnyFlags() {
 		// ignore none normal messages.
 		return
@@ -254,7 +242,7 @@ func (p *pipe) sendRawMsg(msg *multisocket.Message) (err error) {
 	return p.p.Send(msg.Content, msg.Extras...)
 }
 
-func (s *sender) newMsg(sendType uint8, dest multisocket.MsgPath, content []byte, extras [][]byte) (msg *Message) {
+func (s *sender) newMsg(sendType uint8, dest MsgPath, content []byte, extras [][]byte) (msg *Message) {
 	ttl := OptionTTL.Value(s.GetOptionDefault(OptionTTL, defaultMsgTTL))
 	return newMessage(sendType, ttl, dest, content, extras)
 }
@@ -286,25 +274,25 @@ func (s *sender) sendTo(msg *Message) (err error) {
 	return s.doPushMsg(msg, p.sendq, p.closedq)
 }
 
-func (s *sender) SendTo(dest multisocket.MsgPath, content []byte, extras ...[]byte) (err error) {
-	return s.sendTo(s.newMsg(multisocket.SendTypeToDest, dest, content, extras))
+func (s *sender) SendTo(dest MsgPath, content []byte, extras ...[]byte) (err error) {
+	return s.sendTo(s.newMsg(SendTypeToDest, dest, content, extras))
 }
 
 func (s *sender) Send(content []byte, extras ...[]byte) (err error) {
-	return s.SendMsg(s.newMsg(multisocket.SendTypeToOne, nil, content, extras))
+	return s.SendMsg(s.newMsg(SendTypeToOne, nil, content, extras))
 }
 
 func (s *sender) SendAll(content []byte, extras ...[]byte) (err error) {
-	return s.SendMsg(s.newMsg(multisocket.SendTypeToAll, nil, content, extras))
+	return s.SendMsg(s.newMsg(SendTypeToAll, nil, content, extras))
 }
 
 func (s *sender) SendMsg(msg *Message) error {
 	switch msg.Header.SendType() {
-	case multisocket.SendTypeToDest:
+	case SendTypeToDest:
 		return s.sendTo(msg)
-	case multisocket.SendTypeToOne:
+	case SendTypeToOne:
 		return s.doPushMsg(msg, s.sendq, nil)
-	case multisocket.SendTypeToAll:
+	case SendTypeToAll:
 		s.Lock()
 		pipes := make([]*pipe, len(s.pipes))
 		i := 0

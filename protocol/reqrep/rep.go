@@ -2,18 +2,21 @@ package reqrep
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/connector"
+	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/receiver"
 	"github.com/webee/multisocket/sender"
+	. "github.com/webee/multisocket/types"
 )
 
 type (
 	rep struct {
-		multisocket.Socket
+		Socket
 		handler Handler
 		runner  Runner
 
@@ -54,7 +57,7 @@ func (r *rep) Close() error {
 	r.Lock()
 	defer r.Unlock()
 	if r.closed {
-		return multisocket.ErrClosed
+		return errs.ErrClosed
 	}
 	r.closed = true
 	return r.Socket.Close()
@@ -63,7 +66,7 @@ func (r *rep) Close() error {
 func (r *rep) run() {
 	var (
 		err error
-		msg *multisocket.Message
+		msg *Message
 	)
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("action", "start").Debug("run")
@@ -80,21 +83,21 @@ func (r *rep) run() {
 	}
 }
 
-func (r *rep) handle(msg *multisocket.Message) {
+func (r *rep) handle(msg *Message) {
 	requestID := msg.Content[:4]
 	if log.IsLevelEnabled(log.TraceLevel) {
-		log.WithField("requestID", binary.BigEndian.Uint32(requestID)).
+		log.WithFields(log.Fields{"requestID": binary.BigEndian.Uint32(requestID), "source": fmt.Sprintf("0x%x", msg.Source)}).
 			WithField("action", "start").Trace("handle")
 	}
 	rep := r.handler.Handle(msg.Content[4:])
 	if err := r.SendTo(msg.Source, requestID, rep); err != nil {
 		if log.IsLevelEnabled(log.DebugLevel) {
-			log.WithError(err).WithField("requestID", binary.BigEndian.Uint32(requestID)).
+			log.WithFields(log.Fields{"requestID": binary.BigEndian.Uint32(requestID), "source": fmt.Sprintf("0x%x", msg.Source)}).
 				WithField("action", "send").Debug("handle")
 		}
 	}
 	if log.IsLevelEnabled(log.TraceLevel) {
-		log.WithField("requestID", binary.BigEndian.Uint32(requestID)).
+		log.WithFields(log.Fields{"requestID": binary.BigEndian.Uint32(requestID), "source": fmt.Sprintf("0x%x", msg.Source)}).
 			WithField("action", "done").Trace("handle")
 	}
 }

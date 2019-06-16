@@ -1,4 +1,4 @@
-package multisocket
+package types
 
 import (
 	"bytes"

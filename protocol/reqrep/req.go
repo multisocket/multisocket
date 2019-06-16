@@ -11,13 +11,15 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/connector"
+	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/receiver"
 	"github.com/webee/multisocket/sender"
+	. "github.com/webee/multisocket/types"
 )
 
 type (
 	req struct {
-		multisocket.Socket
+		Socket
 		timeout time.Duration
 
 		sync.Mutex
@@ -56,7 +58,7 @@ func (r *req) run() {
 	var (
 		err     error
 		ok      bool
-		msg     *multisocket.Message
+		msg     *Message
 		request *Request
 	)
 	if log.IsLevelEnabled(log.DebugLevel) {
@@ -104,7 +106,7 @@ func (r *req) ReqeustTimeout(t time.Duration, content []byte) ([]byte, error) {
 		return request.Reply, request.Err
 	case <-time.After(t):
 		request.Cancel()
-		return nil, multisocket.ErrTimeout
+		return nil, errs.ErrTimeout
 	}
 }
 
@@ -156,7 +158,7 @@ func (r *req) Close() error {
 	r.Lock()
 	defer r.Unlock()
 	if r.closed {
-		return multisocket.ErrClosed
+		return errs.ErrClosed
 	}
 	r.closed = true
 	return r.Socket.Close()

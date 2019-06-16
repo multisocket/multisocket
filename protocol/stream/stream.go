@@ -15,12 +15,14 @@ import (
 	"github.com/webee/multisocket/sender"
 
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/errs"
+	. "github.com/webee/multisocket/types"
 )
 
 type (
 	stream struct {
 		options.Options
-		multisocket.Socket
+		Socket
 
 		sync.RWMutex
 		closedq chan struct{}
@@ -34,9 +36,9 @@ type (
 	connection struct {
 		id      uint32
 		closedq chan struct{}
-		recvq   chan *multisocket.Message
+		recvq   chan *Message
 		s       *stream
-		src     multisocket.MsgPath
+		src     MsgPath
 		dest    [4]byte
 		pr      *io.PipeReader
 		pw      *io.PipeWriter
@@ -98,7 +100,7 @@ func (s *stream) run() {
 		id   uint32
 		ok   bool
 		err  error
-		msg  *multisocket.Message
+		msg  *Message
 		conn *connection
 	)
 RUNNING:
@@ -115,7 +117,7 @@ RUNNING:
 				WithField("content", msg.Content).Info("recv")
 		}
 		switch msg.Header.SendType() {
-		case multisocket.SendTypeToDest:
+		case SendTypeToDest:
 			// find stream
 			if id, ok = msg.Destination.CurID(); !ok {
 				continue
@@ -218,7 +220,7 @@ func (s *stream) Connect(timeout time.Duration) (conn Connection, err error) {
 	}
 	select {
 	case <-tq:
-		err = multisocket.ErrTimeout
+		err = errs.ErrTimeout
 		return
 	case msg := <-c.recvq:
 		c.src = msg.Source
@@ -236,13 +238,13 @@ func (s *stream) Connect(timeout time.Duration) (conn Connection, err error) {
 
 func (s *stream) Accept() (conn Connection, err error) {
 	if !s.acceptable {
-		err = multisocket.ErrOperationNotSupported
+		err = errs.ErrOperationNotSupported
 		return
 	}
 
 	select {
 	case <-s.closedq:
-		err = multisocket.ErrClosed
+		err = errs.ErrClosed
 		return
 	case conn = <-s.connq:
 		return
@@ -252,19 +254,19 @@ func (s *stream) Accept() (conn Connection, err error) {
 func (s *stream) Close() error {
 	select {
 	case <-s.closedq:
-		return multisocket.ErrClosed
+		return errs.ErrClosed
 	default:
 		close(s.closedq)
 		return s.Socket.Close()
 	}
 }
 
-func (s *stream) newConnection(src multisocket.MsgPath) *connection {
+func (s *stream) newConnection(src MsgPath) *connection {
 	pr, pw := io.Pipe()
 	conn := &connection{
 		id:      pipeStreamID.NextID(),
 		closedq: make(chan struct{}),
-		recvq:   make(chan *multisocket.Message, s.streamRecvQueueSize),
+		recvq:   make(chan *Message, s.streamRecvQueueSize),
 		s:       s,
 		src:     src,
 		dest:    [4]byte{},
@@ -283,7 +285,7 @@ func (conn *connection) sendConnect() error {
 			Info(">>connect")
 	}
 
-	msg := multisocket.NewMessage(multisocket.SendTypeToOne, nil, multisocket.MsgFlagControl, []byte(ControlMsgKeepAlive))
+	msg := NewMessage(SendTypeToOne, nil, MsgFlagControl, []byte(ControlMsgKeepAlive))
 	msg.AddSource(conn.dest)
 	return conn.s.SendMsg(msg)
 }
@@ -295,7 +297,7 @@ func (conn *connection) sendKeepAlive() error {
 			Info(">keepAlive")
 	}
 
-	msg := multisocket.NewMessage(multisocket.SendTypeToDest, conn.src, multisocket.MsgFlagControl, []byte(ControlMsgKeepAlive))
+	msg := NewMessage(SendTypeToDest, conn.src, MsgFlagControl, []byte(ControlMsgKeepAlive))
 	msg.AddSource(conn.dest)
 	return conn.s.SendMsg(msg)
 }
@@ -307,7 +309,7 @@ func (conn *connection) sendKeepAliveAck() error {
 			Info(">keepAliveAck")
 	}
 
-	msg := multisocket.NewMessage(multisocket.SendTypeToDest, conn.src, multisocket.MsgFlagControl, []byte(ControlMsgKeepAliveAck))
+	msg := NewMessage(SendTypeToDest, conn.src, MsgFlagControl, []byte(ControlMsgKeepAliveAck))
 	msg.AddSource(conn.dest)
 	return conn.s.SendMsg(msg)
 }
@@ -320,7 +322,7 @@ func (conn *connection) run() {
 	}
 
 	var (
-		msg            *multisocket.Message
+		msg            *Message
 		keepAliveTq    <-chan time.Time
 		keepAliveAckTq <-chan time.Time
 	)
@@ -336,7 +338,7 @@ RUNNING:
 		case <-conn.closedq:
 			break RUNNING
 		case msg = <-conn.recvq:
-			if msg.Header.HasFlags(multisocket.MsgFlagControl) {
+			if msg.Header.HasFlags(MsgFlagControl) {
 				// handle control msg
 				switch string(msg.Content) {
 				case ControlMsgKeepAlive:
@@ -425,7 +427,7 @@ func (conn *connection) Read(p []byte) (n int, err error) {
 func (conn *connection) Write(p []byte) (n int, err error) {
 	select {
 	case <-conn.closedq:
-		err = multisocket.ErrClosed
+		err = errs.ErrClosed
 		return
 	default:
 	}
@@ -437,7 +439,7 @@ func (conn *connection) Write(p []byte) (n int, err error) {
 
 	// NOTE: Writer must not retain p
 	content := append([]byte(nil), p...)
-	msg := multisocket.NewMessage(multisocket.SendTypeToDest, conn.src, 0, content)
+	msg := NewMessage(SendTypeToDest, conn.src, 0, content)
 	msg.AddSource(conn.dest)
 	if err = conn.s.SendMsg(msg); err != nil {
 		conn.Close()
@@ -450,7 +452,7 @@ func (conn *connection) Write(p []byte) (n int, err error) {
 func (conn *connection) Close() error {
 	select {
 	case <-conn.closedq:
-		return multisocket.ErrClosed
+		return errs.ErrClosed
 	default:
 		close(conn.closedq)
 	}

@@ -1,15 +1,15 @@
 package sender
 
 import (
-	"github.com/webee/multisocket"
+	. "github.com/webee/multisocket/types"
 )
 
-func newMessage(sendType uint8, ttl uint8, dest multisocket.MsgPath, content []byte, extras [][]byte) *multisocket.Message {
-	header := &multisocket.MsgHeader{Flags: sendType, TTL: ttl, Hops: 0}
-	if sendType == multisocket.SendTypeToDest {
+func newMessage(sendType uint8, ttl uint8, dest MsgPath, content []byte, extras [][]byte) *Message {
+	header := &MsgHeader{Flags: sendType, TTL: ttl, Hops: 0}
+	if sendType == SendTypeToDest {
 		header.Distance = dest.Length()
 	}
-	return &multisocket.Message{
+	return &Message{
 		Header:      header,
 		Destination: dest,
 		Content:     content,

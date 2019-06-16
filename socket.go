@@ -2,6 +2,12 @@ package multisocket
 
 import (
 	"sync"
+
+	"github.com/webee/multisocket/options"
+	"github.com/webee/multisocket/receiver"
+
+	"github.com/webee/multisocket/errs"
+	. "github.com/webee/multisocket/types"
 )
 
 type socket struct {
@@ -14,19 +20,23 @@ type socket struct {
 }
 
 // New creates a Socket
-func New(connector Connector, sender Sender, receiver Receiver) (sock Socket) {
-	sock = &socket{
-		Connector: connector,
-		Sender:    sender,
-		Receiver:  receiver,
+func New(connector Connector, tx Sender, rx Receiver) (sock Socket) {
+	if rx == nil {
+		// use receiver to check pipe closed
+		rx = receiver.NewWithOptions(options.NewOptionValue(receiver.OptionNoRecv, true))
 	}
 
-	if sender != nil {
-		sender.AttachConnector(connector)
+	sock = &socket{
+		Connector: connector,
+		Sender:    tx,
+		Receiver:  rx,
 	}
-	if receiver != nil {
-		receiver.AttachConnector(connector)
+
+	if tx != nil {
+		tx.AttachConnector(connector)
 	}
+	rx.AttachConnector(connector)
+
 	return
 }
 
@@ -34,7 +44,7 @@ func (s *socket) Close() error {
 	s.Lock()
 	if s.closed {
 		s.Unlock()
-		return ErrClosed
+		return errs.ErrClosed
 	}
 	s.closed = true
 	s.Unlock()

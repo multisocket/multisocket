@@ -4,9 +4,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/webee/multisocket/utils"
-
+	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/transport"
+	"github.com/webee/multisocket/utils"
 )
 
 // pipe wraps the transport.Connection data structure with the stuff we need to keep.
@@ -82,7 +82,7 @@ func (p *pipe) SendTimeout(timeout time.Duration, msg []byte, extras ...[]byte) 
 		if err = p.c.Send(msg, extras...); err != nil {
 			// NOTE: close on any error
 			go p.Close()
-			err = ErrClosed
+			err = errs.ErrClosed
 		}
 		return
 	}
@@ -94,13 +94,13 @@ func (p *pipe) SendTimeout(timeout time.Duration, msg []byte, extras ...[]byte) 
 		if err = p.c.Send(msg, extras...); err != nil {
 			// NOTE: close on any error
 			go p.Close()
-			err = ErrClosed
+			err = errs.ErrClosed
 		}
 		done <- struct{}{}
 	}()
 	select {
 	case <-tq:
-		err = ErrTimeout
+		err = errs.ErrTimeout
 	case <-done:
 	}
 	return
@@ -133,7 +133,7 @@ func (p *pipe) RecvTimeout(timeout time.Duration) (msg []byte, err error) {
 
 	select {
 	case <-tq:
-		err = ErrTimeout
+		err = errs.ErrTimeout
 	case <-done:
 	}
 	return

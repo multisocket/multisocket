@@ -4,15 +4,15 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	"github.com/webee/multisocket"
+	. "github.com/webee/multisocket/types"
 )
 
 const (
-	defaultMsgTTL = multisocket.DefaultMsgTTL
+	defaultMsgTTL = DefaultMsgTTL
 )
 
-func newHeaderFromBytes(payload []byte) (header *multisocket.MsgHeader, err error) {
-	header = new(multisocket.MsgHeader)
+func newHeaderFromBytes(payload []byte) (header *MsgHeader, err error) {
+	header = new(MsgHeader)
 	if len(payload) < header.Size() {
 		err = ErrRecvInvalidData
 		return
@@ -24,6 +24,6 @@ func newHeaderFromBytes(payload []byte) (header *multisocket.MsgHeader, err erro
 	return
 }
 
-func newPathFromBytes(n int, payload []byte) multisocket.MsgPath {
-	return multisocket.MsgPath(append([]byte{}, payload[:4*n]...))
+func newPathFromBytes(n int, payload []byte) MsgPath {
+	return MsgPath(append([]byte{}, payload[:4*n]...))
 }

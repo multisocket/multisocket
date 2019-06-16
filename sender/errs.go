@@ -1,7 +1,7 @@
 package sender
 
 import (
-	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/errs"
 )
 
 type err string
@@ -12,8 +12,8 @@ func (e err) Error() string {
 
 // errors
 const (
-	ErrClosed          = multisocket.ErrClosed
-	ErrTimeout         = multisocket.ErrTimeout
+	ErrClosed          = errs.ErrClosed
+	ErrTimeout         = errs.ErrTimeout
 	ErrMsgDropped      = err("message dropped")
 	ErrBadDestination  = err("bad destination")
 	ErrBrokenPath      = err("broken path")

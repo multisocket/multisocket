@@ -5,21 +5,22 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
+	. "github.com/webee/multisocket/types"
 )
 
 type (
 	connector struct {
 		options.Options
 		sync.Mutex
-		negotiator        multisocket.Negotiator
+		negotiator        Negotiator
 		limit             int
 		dialers           map[*dialer]struct{} // can dial to any address any times
 		listeners         map[*listener]struct{}
 		pipes             map[uint32]*pipe
-		pipeEventHandlers map[multisocket.PipeEventHandler]struct{}
+		pipeEventHandlers map[PipeEventHandler]struct{}
 		closed            bool
 	}
 )
@@ -30,23 +31,23 @@ const (
 )
 
 // New create a any Connector
-func New() multisocket.Connector {
+func New() Connector {
 	return NewWithOptions()
 }
 
 // NewWithOptions create a Connector with options
-func NewWithOptions(ovs ...*options.OptionValue) multisocket.Connector {
+func NewWithOptions(ovs ...*options.OptionValue) Connector {
 	return NewWithLimitAndOptions(defaultConnLimit, ovs...)
 }
 
 // NewWithLimitAndOptions create a Connector with limit and options
-func NewWithLimitAndOptions(limit int, ovs ...*options.OptionValue) multisocket.Connector {
+func NewWithLimitAndOptions(limit int, ovs ...*options.OptionValue) Connector {
 	c := &connector{
 		limit:             limit,
 		dialers:           make(map[*dialer]struct{}),
 		listeners:         make(map[*listener]struct{}),
 		pipes:             make(map[uint32]*pipe),
-		pipeEventHandlers: make(map[multisocket.PipeEventHandler]struct{}),
+		pipeEventHandlers: make(map[PipeEventHandler]struct{}),
 	}
 	c.Options = options.NewOptionsWithAccepts(OptionConnLimit, PipeOptionSendTimeout, PipeOptionRecvTimeout).SetOptionChangeHook(c.onOptionChange)
 	for _, ov := range ovs {
@@ -158,7 +159,7 @@ func (c *connector) addPipe(p *pipe) {
 
 		c.pipes[p.ID()] = p
 		for peh := range c.pipeEventHandlers {
-			go peh.HandlePipeEvent(multisocket.PipeEventAdd, p)
+			go peh.HandlePipeEvent(PipeEventAdd, p)
 		}
 
 		c.checkLimit(false)
@@ -178,7 +179,7 @@ func (c *connector) remPipe(p *pipe) {
 	c.Lock()
 	delete(c.pipes, p.ID())
 	for peh := range c.pipeEventHandlers {
-		go peh.HandlePipeEvent(multisocket.PipeEventRemove, p)
+		go peh.HandlePipeEvent(PipeEventRemove, p)
 	}
 	c.Unlock()
 
@@ -196,7 +197,7 @@ func (c *connector) remPipe(p *pipe) {
 	c.checkLimit(false)
 }
 
-func (c *connector) SetNegotiator(negotiator multisocket.Negotiator) {
+func (c *connector) SetNegotiator(negotiator Negotiator) {
 	c.Lock()
 	c.negotiator = negotiator
 	c.Unlock()
@@ -214,12 +215,12 @@ func (c *connector) DialOptions(addr string, opts options.Options) error {
 	return d.Dial()
 }
 
-func (c *connector) NewDialer(addr string, opts options.Options) (d multisocket.Dialer, err error) {
+func (c *connector) NewDialer(addr string, opts options.Options) (d Dialer, err error) {
 	c.Lock()
 	defer c.Unlock()
 
 	if c.closed {
-		err = multisocket.ErrClosed
+		err = errs.ErrClosed
 		return
 	}
 
@@ -229,7 +230,7 @@ func (c *connector) NewDialer(addr string, opts options.Options) (d multisocket.
 	)
 
 	if t = transport.GetTransportFromAddr(addr); t == nil {
-		err = transport.ErrBadTransport
+		err = errs.ErrBadTransport
 		return
 	}
 
@@ -277,12 +278,12 @@ func (c *connector) ListenOptions(addr string, opts options.Options) error {
 	return l.Listen()
 }
 
-func (c *connector) NewListener(addr string, opts options.Options) (l multisocket.Listener, err error) {
+func (c *connector) NewListener(addr string, opts options.Options) (l Listener, err error) {
 	c.Lock()
 	defer c.Unlock()
 
 	if c.closed {
-		err = multisocket.ErrClosed
+		err = errs.ErrClosed
 		return
 	}
 
@@ -292,7 +293,7 @@ func (c *connector) NewListener(addr string, opts options.Options) (l multisocke
 	)
 
 	if t = transport.GetTransportFromAddr(addr); t == nil {
-		err = transport.ErrBadTransport
+		err = errs.ErrBadTransport
 		return
 	}
 
@@ -330,7 +331,7 @@ func (c *connector) StopListen(addr string) {
 	c.Unlock()
 }
 
-func (c *connector) GetPipe(id uint32) multisocket.Pipe {
+func (c *connector) GetPipe(id uint32) Pipe {
 	c.Lock()
 	p := c.pipes[id]
 	c.Unlock()
@@ -374,13 +375,13 @@ func (c *connector) Close() {
 	}
 }
 
-func (c *connector) RegisterPipeEventHandler(handler multisocket.PipeEventHandler) {
+func (c *connector) RegisterPipeEventHandler(handler PipeEventHandler) {
 	c.Lock()
 	c.pipeEventHandlers[handler] = struct{}{}
 	c.Unlock()
 }
 
-func (c *connector) UnregisterPipeEventHandler(handler multisocket.PipeEventHandler) {
+func (c *connector) UnregisterPipeEventHandler(handler PipeEventHandler) {
 	c.Lock()
 	delete(c.pipeEventHandlers, handler)
 	c.Unlock()

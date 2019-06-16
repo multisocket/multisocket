@@ -5,6 +5,8 @@ import (
 	"net"
 	"sync"
 
+	"github.com/webee/multisocket/errs"
+
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
 )
@@ -83,7 +85,7 @@ func (d *dialer) Dial() (_ transport.Connection, err error) {
 
 func (l *listener) Accept() (transport.Connection, error) {
 	if l.listener == nil {
-		return nil, transport.ErrClosed
+		return nil, errs.ErrClosed
 	}
 	conn, err := l.listener.AcceptTCP()
 	if err != nil {

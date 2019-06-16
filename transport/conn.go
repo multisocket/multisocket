@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/options"
 )
 
@@ -35,12 +36,12 @@ func (conn *connection) Recv() (msg []byte, err error) {
 	var sz uint32
 
 	if err = binary.Read(conn.c, binary.BigEndian, &sz); err != nil {
-		err = ErrBadMsg
+		err = errs.ErrBadMsg
 		return
 	}
 
 	if conn.maxrx > 0 && sz > conn.maxrx {
-		err = ErrMsgTooLong
+		err = errs.ErrMsgTooLong
 		return
 	}
 

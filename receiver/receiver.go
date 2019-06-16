@@ -5,8 +5,8 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/options"
+	. "github.com/webee/multisocket/types"
 )
 
 type (
@@ -14,16 +14,16 @@ type (
 		options.Options
 
 		sync.Mutex
-		attachedConnectors map[multisocket.Connector]struct{}
+		attachedConnectors map[Connector]struct{}
 		closed             bool
 		closedq            chan struct{}
 		pipes              map[uint32]*pipe
-		recvq              chan *multisocket.Message
+		recvq              chan *Message
 	}
 
 	pipe struct {
 		closedq chan struct{}
-		p       multisocket.Pipe
+		p       Pipe
 	}
 )
 
@@ -42,15 +42,15 @@ func init() {
 }
 
 // New create a receiver.
-func New() multisocket.Receiver {
+func New() Receiver {
 	return NewWithOptions()
 }
 
 // NewWithOptions create a normal receiver with options.
-func NewWithOptions(ovs ...*options.OptionValue) multisocket.Receiver {
+func NewWithOptions(ovs ...*options.OptionValue) Receiver {
 	r := &receiver{
 		Options:            options.NewOptions(),
-		attachedConnectors: make(map[multisocket.Connector]struct{}),
+		attachedConnectors: make(map[Connector]struct{}),
 		closed:             false,
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
@@ -58,25 +58,25 @@ func NewWithOptions(ovs ...*options.OptionValue) multisocket.Receiver {
 	for _, ov := range ovs {
 		r.SetOption(ov.Option, ov.Value)
 	}
-	r.recvq = make(chan *multisocket.Message, r.recvQueueSize())
+	r.recvq = make(chan *Message, r.recvQueueSize())
 
 	return r
 }
 
-func newPipe(p multisocket.Pipe) *pipe {
+func newPipe(p Pipe) *pipe {
 	return &pipe{
 		closedq: make(chan struct{}),
 		p:       p,
 	}
 }
 
-func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
+func (p *pipe) recvMsg() (msg *Message, err error) {
 	var (
 		ok      bool
 		payload []byte
-		header  *multisocket.MsgHeader
-		source  multisocket.MsgPath
-		dest    multisocket.MsgPath
+		header  *MsgHeader
+		source  MsgPath
+		dest    MsgPath
 	)
 	if payload, err = p.p.Recv(); err != nil {
 		return
@@ -91,7 +91,7 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	source = newPathFromBytes(int(header.Hops), payload[headerSize:])
 	sourceSize := source.Size()
 
-	if sendType == multisocket.SendTypeToDest {
+	if sendType == SendTypeToDest {
 		dest = newPathFromBytes(header.DestLength(), payload[headerSize+sourceSize:])
 	}
 
@@ -102,7 +102,7 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	header.Hops++
 	header.TTL--
 
-	if sendType == multisocket.SendTypeToDest {
+	if sendType == SendTypeToDest {
 		// update destination, remove last pipe id
 		if _, dest, ok = dest.NextID(); !ok {
 			// anyway, msg arrived
@@ -112,7 +112,7 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 		}
 	}
 
-	msg = &multisocket.Message{
+	msg = &Message{
 		Header:      header,
 		Source:      source,
 		Destination: dest,
@@ -121,7 +121,7 @@ func (p *pipe) recvMsg() (msg *multisocket.Message, err error) {
 	return
 }
 
-func (p *pipe) recvRawMsg() (msg *multisocket.Message, err error) {
+func (p *pipe) recvRawMsg() (msg *Message, err error) {
 	var (
 		payload []byte
 	)
@@ -129,14 +129,14 @@ func (p *pipe) recvRawMsg() (msg *multisocket.Message, err error) {
 		return
 	}
 
-	msg = multisocket.NewMessage(multisocket.SendTypeToOne, nil, 0, payload)
+	msg = NewMessage(SendTypeToOne, nil, 0, payload)
 	msg.Source = msg.Source.AddID(p.p.ID())
 	msg.Header.Hops = msg.Source.Length()
 
 	return
 }
 
-func (r *receiver) AttachConnector(connector multisocket.Connector) {
+func (r *receiver) AttachConnector(connector Connector) {
 	r.Lock()
 	defer r.Unlock()
 
@@ -153,16 +153,20 @@ func (r *receiver) recvTimeout() time.Duration {
 	return OptionRecvTimeout.Value(r.GetOptionDefault(OptionRecvTimeout, time.Duration(0)))
 }
 
-func (r *receiver) HandlePipeEvent(e multisocket.PipeEvent, pipe multisocket.Pipe) {
+func (r *receiver) noRecv() bool {
+	return OptionNoRecv.Value(r.GetOptionDefault(OptionNoRecv, false))
+}
+
+func (r *receiver) HandlePipeEvent(e PipeEvent, pipe Pipe) {
 	switch e {
-	case multisocket.PipeEventAdd:
+	case PipeEventAdd:
 		r.addPipe(pipe)
-	case multisocket.PipeEventRemove:
+	case PipeEventRemove:
 		r.remPipe(pipe.ID())
 	}
 }
 
-func (r *receiver) addPipe(pipe multisocket.Pipe) {
+func (r *receiver) addPipe(pipe Pipe) {
 	r.Lock()
 	defer r.Unlock()
 	p := newPipe(pipe)
@@ -202,7 +206,7 @@ func (r *receiver) run(p *pipe) {
 
 		// NOTE:
 		// send a empty control to make a connection
-		msg := multisocket.NewMessage(multisocket.SendTypeToOne, nil, multisocket.MsgFlagControl, nil)
+		msg := NewMessage(SendTypeToOne, nil, MsgFlagControl, nil)
 		// update source, add current pipe id
 		msg.Source = msg.Source.AddID(p.p.ID())
 		msg.Header.Hops = msg.Source.Length()
@@ -211,8 +215,9 @@ func (r *receiver) run(p *pipe) {
 	}
 
 	var (
-		err error
-		msg *multisocket.Message
+		noRecv = r.noRecv()
+		err    error
+		msg    *Message
 	)
 RECVING:
 	for {
@@ -225,6 +230,11 @@ RECVING:
 			}
 			break
 		}
+		if noRecv {
+			// just drop
+			continue
+		}
+
 		if msg == nil {
 			// ignore nil msg
 			continue
@@ -253,7 +263,7 @@ RECVING:
 	}
 }
 
-func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {
+func (r *receiver) RecvMsg() (msg *Message, err error) {
 	var (
 		timeoutTimer *time.Timer
 	)
@@ -279,7 +289,7 @@ func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {
 }
 
 func (r *receiver) Recv() (content []byte, err error) {
-	var msg *multisocket.Message
+	var msg *Message
 	if msg, err = r.RecvMsg(); err != nil {
 		return
 	}

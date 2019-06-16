@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
 )
@@ -61,13 +62,13 @@ func (d *dialer) dialAsync() bool {
 func (d *dialer) Dial() error {
 	select {
 	case <-d.closedq:
-		return ErrClosed
+		return errs.ErrClosed
 	default:
 	}
 	d.Lock()
 	if d.active {
 		d.Unlock()
-		return ErrAddrInUse
+		return errs.ErrAddrInUse
 	}
 
 	d.active = true
@@ -84,7 +85,7 @@ func (d *dialer) Dial() error {
 func (d *dialer) Close() error {
 	select {
 	case <-d.closedq:
-		return ErrClosed
+		return errs.ErrClosed
 	default:
 		close(d.closedq)
 	}
@@ -131,7 +132,7 @@ func (d *dialer) pipeClosed() {
 func (d *dialer) dial(redial bool) error {
 	select {
 	case <-d.closedq:
-		return ErrClosed
+		return errs.ErrClosed
 	default:
 	}
 
@@ -143,7 +144,7 @@ func (d *dialer) dial(redial bool) error {
 
 	if d.dialing || d.connected {
 		d.Unlock()
-		return ErrAddrInUse
+		return errs.ErrAddrInUse
 	}
 	if d.redialer != nil {
 		d.redialer.Stop()

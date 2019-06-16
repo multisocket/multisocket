@@ -14,6 +14,7 @@ import (
 	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/receiver"
 	"github.com/webee/multisocket/sender"
+	. "github.com/webee/multisocket/types"
 )
 
 type (
@@ -21,17 +22,17 @@ type (
 	RawToStream struct {
 		sync.Mutex
 		stream    Stream
-		rawSock   multisocket.Socket
+		rawSock   Socket
 		pipeConns map[uint32]*pipeConn
 	}
 
 	pipeConn struct {
 		id      uint32
 		dest    [4]byte
-		s       multisocket.Socket
+		s       Socket
 		conn    Connection
 		closedq chan struct{}
-		recvq   chan *multisocket.Message
+		recvq   chan *Message
 	}
 )
 
@@ -73,7 +74,7 @@ func (rs *RawToStream) RawListen(addr string) error {
 func (rs *RawToStream) run() {
 	var (
 		err error
-		msg *multisocket.Message
+		msg *Message
 	)
 
 	if log.IsLevelEnabled(log.DebugLevel) {
@@ -129,7 +130,7 @@ func (rs *RawToStream) newPipeConn(id uint32) *pipeConn {
 		dest:    [4]byte{},
 		s:       rs.rawSock,
 		closedq: make(chan struct{}),
-		recvq:   make(chan *multisocket.Message, 64),
+		recvq:   make(chan *Message, 64),
 	}
 
 	binary.BigEndian.PutUint32(pc.dest[:4], id)
@@ -173,7 +174,7 @@ func (rs *RawToStream) runPipeConn(pc *pipeConn) {
 			Debug("runPipeConn")
 	}
 
-	dest := multisocket.MsgPath(nil).AddSource(pc.dest)
+	dest := MsgPath(nil).AddSource(pc.dest)
 	// stream to raw
 	go func() {
 		var (
@@ -182,7 +183,7 @@ func (rs *RawToStream) runPipeConn(pc *pipeConn) {
 			n      int
 			p      = make([]byte, 4*1024)
 		)
-		msg := multisocket.NewMessage(multisocket.SendTypeToDest, dest, 0, nil)
+		msg := NewMessage(SendTypeToDest, dest, 0, nil)
 		for {
 			// if stream close, read will return error
 			if n, err = pc.conn.Read(p); n > 0 {
@@ -200,7 +201,7 @@ func (rs *RawToStream) runPipeConn(pc *pipeConn) {
 	}()
 
 	// raw to stream
-	testMsg := multisocket.NewMessage(multisocket.SendTypeToDest, dest, 0, nil)
+	testMsg := NewMessage(SendTypeToDest, dest, 0, nil)
 	tq := time.After(5 * time.Second)
 RAW_TO_STREAM:
 	for {

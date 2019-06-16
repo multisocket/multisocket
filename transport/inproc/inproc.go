@@ -5,7 +5,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/webee/multisocket/errors"
+	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
 )
@@ -121,7 +121,7 @@ func (d *dialer) Dial() (transport.Connection, error) {
 func (l *listener) Listen() error {
 	select {
 	case <-l.closedq:
-		return transport.ErrClosed
+		return errs.ErrClosed
 	default:
 	}
 
@@ -129,7 +129,7 @@ func (l *listener) Listen() error {
 	if xl, ok := listeners.byAddr[l.addr]; ok {
 		listeners.Unlock()
 		if xl != l {
-			return errors.ErrAddrInUse
+			return errs.ErrAddrInUse
 		}
 		// already in listening
 		return nil
@@ -145,7 +145,7 @@ func (l *listener) Listen() error {
 func (l *listener) Accept() (transport.Connection, error) {
 	select {
 	case <-l.closedq:
-		return nil, transport.ErrClosed
+		return nil, errs.ErrClosed
 	default:
 	}
 
@@ -159,7 +159,7 @@ func (l *listener) Accept() (transport.Connection, error) {
 
 	select {
 	case <-l.closedq:
-		return nil, transport.ErrClosed
+		return nil, errs.ErrClosed
 	case ac := <-l.accepts:
 		lpr, rpw := io.Pipe()
 		rpr, lpw := io.Pipe()
@@ -181,7 +181,7 @@ func (l *listener) Accept() (transport.Connection, error) {
 		// notify dialer
 		select {
 		case <-l.closedq:
-			return nil, transport.ErrClosed
+			return nil, errs.ErrClosed
 		case ac <- dc:
 		}
 
@@ -192,7 +192,7 @@ func (l *listener) Accept() (transport.Connection, error) {
 func (l *listener) Close() error {
 	select {
 	case <-l.closedq:
-		return transport.ErrClosed
+		return errs.ErrClosed
 	default:
 		close(l.closedq)
 	}
