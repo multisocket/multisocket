@@ -66,6 +66,7 @@ func NewWithOptions(ovs ...*options.OptionValue) Sender {
 	for _, ov := range ovs {
 		s.SetOption(ov.Option, ov.Value)
 	}
+	s.sendq = make(chan *Message, s.sendQueueSize())
 	return s
 }
 
@@ -125,11 +126,6 @@ func (s *sender) newPipe(p Pipe) *pipe {
 func (s *sender) AttachConnector(connector Connector) {
 	s.Lock()
 	defer s.Unlock()
-
-	// OptionSendQueueSize useless after first attach
-	if s.sendq == nil {
-		s.sendq = make(chan *Message, s.sendQueueSize())
-	}
 
 	connector.RegisterPipeEventHandler(s)
 	s.attachedConnectors[connector] = struct{}{}

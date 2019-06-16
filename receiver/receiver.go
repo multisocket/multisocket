@@ -58,6 +58,7 @@ func NewWithOptions(ovs ...*options.OptionValue) multisocket.Receiver {
 	for _, ov := range ovs {
 		r.SetOption(ov.Option, ov.Value)
 	}
+	r.recvq = make(chan *multisocket.Message, r.recvQueueSize())
 
 	return r
 }
@@ -138,11 +139,6 @@ func (p *pipe) recvRawMsg() (msg *multisocket.Message, err error) {
 func (r *receiver) AttachConnector(connector multisocket.Connector) {
 	r.Lock()
 	defer r.Unlock()
-
-	// OptionRecvQueueSize useless after first attach
-	if r.recvq == nil {
-		r.recvq = make(chan *multisocket.Message, r.recvQueueSize())
-	}
 
 	connector.RegisterPipeEventHandler(r)
 	r.attachedConnectors[connector] = struct{}{}
@@ -260,9 +256,6 @@ RECVING:
 func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {
 	var (
 		timeoutTimer *time.Timer
-		retryTimer   *time.Timer
-		retryq       <-chan time.Time = closedQ
-		retryTimes                    = time.Duration(0)
 	)
 
 	recvTimeout := r.recvTimeout()
@@ -272,37 +265,17 @@ func (r *receiver) RecvMsg() (msg *multisocket.Message, err error) {
 		tq = timeoutTimer.C
 	}
 
-	for {
-		select {
-		case <-r.closedq:
-			err = ErrClosed
-		case <-tq:
-			err = ErrTimeout
-		case msg = <-r.recvq:
-		case <-retryq:
-			// FIXME: fix block on recvq channel bug: recvq is not empty but block here.
-			if len(r.recvq) > 0 {
-				retryq = nilQ
-				continue
-			}
-			if retryTimes < 100 {
-				retryTimes++
-			}
-			retryTimer = time.NewTimer(1 * time.Second)
-			retryq = retryTimer.C
-			if log.IsLevelEnabled(log.TraceLevel) {
-				log.WithField("domain", "receiver").Tracef("retry recv: %d", retryTimes)
-			}
-			continue
-		}
-		if retryTimer != nil {
-			retryTimer.Stop()
-		}
-		if timeoutTimer != nil {
-			timeoutTimer.Stop()
-		}
-		return
+	select {
+	case <-r.closedq:
+		err = ErrClosed
+	case <-tq:
+		err = ErrTimeout
+	case msg = <-r.recvq:
 	}
+	if timeoutTimer != nil {
+		timeoutTimer.Stop()
+	}
+	return
 }
 
 func (r *receiver) Recv() (content []byte, err error) {

@@ -12,17 +12,24 @@ type socket struct {
 	receiver  Receiver
 
 	sync.Mutex
-	attached bool
-	closed   bool
+	closed bool
 }
 
 // New creates a Socket
-func New(connector Connector, sender Sender, receiver Receiver) Socket {
-	return &socket{
+func New(connector Connector, sender Sender, receiver Receiver) (sock Socket) {
+	sock = &socket{
 		connector: connector,
 		sender:    sender,
 		receiver:  receiver,
 	}
+
+	if sender != nil {
+		sender.AttachConnector(connector)
+	}
+	if receiver != nil {
+		receiver.AttachConnector(connector)
+	}
+	return
 }
 
 func (s *socket) Connector() Connector {
@@ -37,52 +44,31 @@ func (s *socket) Receiver() Receiver {
 	return s.receiver
 }
 
-func (s *socket) attachConnector() {
-	s.Lock()
-	defer s.Unlock()
-	if s.attached {
-		return
-	}
-	if s.sender != nil {
-		s.sender.AttachConnector(s.connector)
-	}
-	if s.receiver != nil {
-		s.receiver.AttachConnector(s.connector)
-	}
-	s.attached = true
-}
-
 func (s *socket) SetNegotiator(negotiator Negotiator) {
 	s.connector.SetNegotiator(negotiator)
 }
 
 func (s *socket) Dial(addr string) error {
-	s.attachConnector()
 	return s.connector.Dial(addr)
 }
 
 func (s *socket) DialOptions(addr string, opts options.Options) error {
-	s.attachConnector()
 	return s.connector.DialOptions(addr, opts)
 }
 
 func (s *socket) NewDialer(addr string, opts options.Options) (Dialer, error) {
-	s.attachConnector()
 	return s.connector.NewDialer(addr, opts)
 }
 
 func (s *socket) Listen(addr string) error {
-	s.attachConnector()
 	return s.connector.Listen(addr)
 }
 
 func (s *socket) ListenOptions(addr string, opts options.Options) error {
-	s.attachConnector()
 	return s.connector.ListenOptions(addr, opts)
 }
 
 func (s *socket) NewListener(addr string, opts options.Options) (Listener, error) {
-	s.attachConnector()
 	return s.connector.NewListener(addr, opts)
 }
 
