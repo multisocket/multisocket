@@ -16,8 +16,8 @@ type (
 		sync.Mutex
 		negotiator        multisocket.Negotiator
 		limit             int
-		dialers           []*dialer
-		listeners         []*listener
+		dialers           map[*dialer]struct{} // can dial to any address any times
+		listeners         map[*listener]struct{}
 		pipes             map[uint32]*pipe
 		pipeEventHandlers map[multisocket.PipeEventHandler]struct{}
 		closed            bool
@@ -43,8 +43,8 @@ func NewWithOptions(ovs ...*options.OptionValue) multisocket.Connector {
 func NewWithLimitAndOptions(limit int, ovs ...*options.OptionValue) multisocket.Connector {
 	c := &connector{
 		limit:             limit,
-		dialers:           make([]*dialer, 0),
-		listeners:         make([]*listener, 0),
+		dialers:           make(map[*dialer]struct{}),
+		listeners:         make(map[*listener]struct{}),
 		pipes:             make(map[uint32]*pipe),
 		pipeEventHandlers: make(map[multisocket.PipeEventHandler]struct{}),
 	}
@@ -81,11 +81,11 @@ func (c *connector) onOptionChange(opt options.Option, oldVal, newVal interface{
 func (c *connector) checkLimit(checkNoLimit bool) {
 	if checkNoLimit && c.limit == -1 {
 		// start connecting
-		for _, l := range c.listeners {
+		for l := range c.listeners {
 			l.start()
 		}
 
-		for _, d := range c.dialers {
+		for d := range c.dialers {
 			d.start()
 		}
 		if log.IsLevelEnabled(log.DebugLevel) {
@@ -97,11 +97,11 @@ func (c *connector) checkLimit(checkNoLimit bool) {
 	} else if c.limit != -1 && c.limit > len(c.pipes) {
 		// below limit
 		// start connecting
-		for _, l := range c.listeners {
+		for l := range c.listeners {
 			l.start()
 		}
 
-		for _, d := range c.dialers {
+		for d := range c.dialers {
 			d.start()
 		}
 		if log.IsLevelEnabled(log.DebugLevel) {
@@ -113,11 +113,11 @@ func (c *connector) checkLimit(checkNoLimit bool) {
 	} else if c.limit != -1 && c.limit <= len(c.pipes) {
 		// check exceed limit
 		// stop connecting
-		for _, l := range c.listeners {
+		for l := range c.listeners {
 			l.stop()
 		}
 
-		for _, d := range c.dialers {
+		for d := range c.dialers {
 			d.stop()
 		}
 		if log.IsLevelEnabled(log.DebugLevel) {
@@ -237,7 +237,7 @@ func (c *connector) NewDialer(addr string, opts options.Options) (d multisocket.
 		return
 	}
 
-	xd := newDialer(c, td)
+	xd := newDialer(c, addr, td)
 	if c.limit != -1 && c.limit <= len(c.pipes) {
 		// exceed limit
 		xd.stop()
@@ -249,8 +249,20 @@ func (c *connector) NewDialer(addr string, opts options.Options) (d multisocket.
 		}
 	}
 
-	c.dialers = append(c.dialers, xd)
+	c.dialers[xd] = struct{}{}
 	return d, nil
+}
+
+func (c *connector) StopDial(addr string) {
+	// NOTE: keep connected pipes
+	c.Lock()
+	for d := range c.dialers {
+		if d.addr == addr {
+			delete(c.dialers, d)
+			d.Close()
+		}
+	}
+	c.Unlock()
 }
 
 func (c *connector) Listen(addr string) error {
@@ -287,9 +299,8 @@ func (c *connector) NewListener(addr string, opts options.Options) (l multisocke
 	if tl, err = t.NewListener(addr); err != nil {
 		return
 	}
-	tl.SetOption(transport.OptionMaxRecvMsgSize, defaultMaxRxMsgSize)
 
-	xl := newListener(c, tl)
+	xl := newListener(c, addr, tl)
 	if c.limit != -1 && c.limit <= len(c.pipes) {
 		// exceed limit
 		xl.stop()
@@ -302,9 +313,21 @@ func (c *connector) NewListener(addr string, opts options.Options) (l multisocke
 		}
 	}
 
-	c.listeners = append(c.listeners, xl)
+	c.listeners[xl] = struct{}{}
 
 	return
+}
+
+func (c *connector) StopListen(addr string) {
+	// NOTE: keep accepted pipes
+	c.Lock()
+	for l := range c.listeners {
+		if l.addr == addr {
+			delete(c.listeners, l)
+			l.Close()
+		}
+	}
+	c.Unlock()
 }
 
 func (c *connector) GetPipe(id uint32) multisocket.Pipe {
@@ -339,10 +362,10 @@ func (c *connector) Close() {
 	c.pipes = nil
 	c.Unlock()
 
-	for _, l := range listeners {
+	for l := range listeners {
 		l.Close()
 	}
-	for _, d := range dialers {
+	for d := range dialers {
 		d.Close()
 	}
 

@@ -15,4 +15,5 @@ const (
 	ErrClosed    = errors.ErrClosed
 	ErrTimeout   = errors.ErrTimeout
 	ErrAddrInUse = errors.ErrAddrInUse
+	ErrStopped   = err("object is stopped")
 )

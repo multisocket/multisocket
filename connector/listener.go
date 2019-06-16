@@ -12,6 +12,7 @@ type listener struct {
 	options.Options
 
 	parent *connector
+	addr   string
 	l      transport.Listener
 	sync.Mutex
 	closed bool
@@ -19,11 +20,12 @@ type listener struct {
 	stopped bool
 }
 
-func newListener(parent *connector, tl transport.Listener) *listener {
+func newListener(parent *connector, addr string, tl transport.Listener) *listener {
 	opts := options.NewOptionsWithUpDownStreamsAndAccepts(tl, tl)
 	return &listener{
 		Options: opts,
 		parent:  parent,
+		addr:    addr,
 		l:       tl,
 		closed:  false,
 	}

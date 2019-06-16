@@ -18,10 +18,11 @@ const (
 type dialer struct {
 	options.Options
 	parent *connector
+	addr   string
 	d      transport.Dialer
 
 	sync.Mutex
-	closed     bool
+	closedq    chan struct{}
 	stopped    bool
 	active     bool
 	dialing    bool
@@ -30,7 +31,7 @@ type dialer struct {
 	reconnTime time.Duration
 }
 
-func newDialer(parent *connector, td transport.Dialer) *dialer {
+func newDialer(parent *connector, addr string, td transport.Dialer) *dialer {
 	opts := options.NewOptionsWithUpDownStreamsAndAccepts(nil, td,
 		DialerOptionMinReconnectTime,
 		DialerOptionMaxReconnectTime,
@@ -38,7 +39,9 @@ func newDialer(parent *connector, td transport.Dialer) *dialer {
 	return &dialer{
 		Options: opts,
 		parent:  parent,
+		addr:    addr,
 		d:       td,
+		closedq: make(chan struct{}),
 	}
 }
 
@@ -56,14 +59,15 @@ func (d *dialer) dialAsync() bool {
 }
 
 func (d *dialer) Dial() error {
+	select {
+	case <-d.closedq:
+		return ErrClosed
+	default:
+	}
 	d.Lock()
 	if d.active {
 		d.Unlock()
 		return ErrAddrInUse
-	}
-	if d.closed {
-		d.Unlock()
-		return ErrClosed
 	}
 
 	d.active = true
@@ -78,12 +82,12 @@ func (d *dialer) Dial() error {
 }
 
 func (d *dialer) Close() error {
-	d.Lock()
-	defer d.Unlock()
-	if d.closed {
+	select {
+	case <-d.closedq:
 		return ErrClosed
+	default:
+		close(d.closedq)
 	}
-	d.closed = true
 	return nil
 }
 
@@ -115,22 +119,29 @@ func (d *dialer) pipeClosed() {
 	// delay should help.
 	d.Lock()
 	d.connected = false
-	time.AfterFunc(d.reconnTime, d.redial)
 	d.Unlock()
+
+	select {
+	case <-d.closedq:
+	default:
+		time.AfterFunc(d.reconnTime, d.redial)
+	}
 }
 
 func (d *dialer) dial(redial bool) error {
-	d.Lock()
-	if d.stopped {
-		return nil
+	select {
+	case <-d.closedq:
+		return ErrClosed
+	default:
 	}
 
-	if d.dialing || d.connected || d.closed {
-		// If we already have a dial in progress, then stop.
-		// This really should never occur (see comments below),
-		// but having multiple dialers create multiple pipes is
-		// probably bad.  So be paranoid -- I mean "defensive" --
-		// for now.
+	d.Lock()
+	if d.stopped {
+		d.Unlock()
+		return ErrStopped
+	}
+
+	if d.dialing || d.connected {
 		d.Unlock()
 		return ErrAddrInUse
 	}
@@ -154,7 +165,6 @@ func (d *dialer) dial(redial bool) error {
 
 	d.Lock()
 	defer d.Unlock()
-
 	// We're no longer dialing, so let another reschedule happen, if
 	// appropriate.   This is quite possibly paranoia.  We should only
 	// be in this routine in the following circumstances:

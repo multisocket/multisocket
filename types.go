@@ -9,15 +9,7 @@ import (
 type (
 	// Socket is a network peer
 	Socket interface {
-		Connector() Connector
-		Sender() Sender
-		Receiver() Receiver
-
-		SetNegotiator(Negotiator)
 		ConnectorAction
-		GetPipe(id uint32) Pipe
-		ClosePipe(id uint32)
-
 		SenderAction
 		ReceiverAction
 
@@ -83,22 +75,26 @@ type (
 
 	// ConnectorAction is connector's action
 	ConnectorAction interface {
+		SetNegotiator(Negotiator)
+
 		Dial(addr string) error
 		DialOptions(addr string, opts options.Options) error
 		NewDialer(addr string, opts options.Options) (Dialer, error)
+		StopDial(addr string)
 
 		Listen(addr string) error
 		ListenOptions(addr string, opts options.Options) error
 		NewListener(addr string, opts options.Options) (Listener, error)
+		StopListen(addr string)
+
+		GetPipe(id uint32) Pipe
+		ClosePipe(id uint32)
 	}
 
 	// Connector controls socket's connections
 	Connector interface {
 		options.Options
-		SetNegotiator(Negotiator)
 		ConnectorAction
-		GetPipe(id uint32) Pipe
-		ClosePipe(id uint32)
 		Close()
 		RegisterPipeEventHandler(PipeEventHandler)
 		UnregisterPipeEventHandler(PipeEventHandler)
