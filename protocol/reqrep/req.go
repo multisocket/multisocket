@@ -7,13 +7,10 @@ import (
 	"time"
 
 	"github.com/webee/multisocket/message"
-	"github.com/webee/multisocket/options"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
-	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/errs"
-	"github.com/webee/multisocket/receiver"
 	"github.com/webee/multisocket/sender"
 )
 
@@ -30,7 +27,7 @@ type (
 )
 
 const (
-	defaultTimeout = time.Second * 5
+	defaultTimeout = time.Second * 16
 )
 
 // NewReq create a Req protocol instance
@@ -40,10 +37,11 @@ func NewReq() Req {
 
 // NewReqWithTimeout create a Req protocol instance with request timeout
 func NewReqWithTimeout(timeout time.Duration) Req {
+	sock := multisocket.NewDefault()
+	sock.GetSender().SetOption(sender.OptionSendBestEffort, true)
+
 	req := &req{
-		Socket: multisocket.New(connector.New(),
-			sender.NewWithOptions(options.NewOptionValue(sender.OptionSendBestEffort, true)),
-			receiver.New()),
+		Socket:   sock,
 		timeout:  timeout,
 		closedq:  make(chan struct{}),
 		reqID:    uint32(time.Now().UnixNano()), // quasi-random

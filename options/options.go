@@ -188,7 +188,9 @@ func (opts *options) doSetOption(opt Option, val interface{}) {
 	oldVal := opts.opts[opt]
 	opts.opts[opt] = val
 	if opts.optionChangeHook != nil {
+		opts.Unlock()
 		opts.optionChangeHook(opt, oldVal, val)
+		opts.Lock()
 	}
 }
 

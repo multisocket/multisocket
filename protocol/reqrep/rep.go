@@ -9,10 +9,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
-	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/errs"
-	"github.com/webee/multisocket/receiver"
-	"github.com/webee/multisocket/sender"
 )
 
 type (
@@ -39,7 +36,7 @@ func (goRunner) Run(f func()) {
 // NewRep create a Rep protocol instance
 func NewRep(handler Handler) Rep {
 	return &rep{
-		Socket:  multisocket.New(connector.New(), sender.New(), receiver.New()),
+		Socket:  multisocket.NewDefault(),
 		handler: handler,
 		runner:  defaultRunner,
 	}

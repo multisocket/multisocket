@@ -14,6 +14,10 @@ type (
 		receiver.ReceiverAction
 
 		Close() error
+
+		GetConnector() Connector
+		GetSender() Sender
+		GetReceiver() Receiver
 	}
 
 	Connector = connector.Connector

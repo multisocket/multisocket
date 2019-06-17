@@ -17,10 +17,12 @@ const (
 
 // Options
 var (
-	OptionConnLimit              = options.NewIntOption(optionNameConnLimit)
+	// Connector
+	OptionConnLimit       = options.NewIntOption(optionNameConnLimit)
+	PipeOptionSendTimeout = options.NewTimeDurationOption(pipeOptionSendTimeout)
+	PipeOptionRecvTimeout = options.NewTimeDurationOption(pipeOptionRecvTimeout)
+	// Dialer
 	DialerOptionMinReconnectTime = options.NewTimeDurationOption(dialerOptionNameMinReconnectTime)
 	DialerOptionMaxReconnectTime = options.NewTimeDurationOption(dialerOptionNameMaxReconnectTime)
 	DialerOptionDialAsync        = options.NewBoolOption(dialerOptionNameDialAsync)
-	PipeOptionSendTimeout        = options.NewTimeDurationOption(pipeOptionSendTimeout)
-	PipeOptionRecvTimeout        = options.NewTimeDurationOption(pipeOptionRecvTimeout)
 )

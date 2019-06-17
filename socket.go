@@ -3,10 +3,11 @@ package multisocket
 import (
 	"sync"
 
+	"github.com/webee/multisocket/connector"
+	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/receiver"
-
-	"github.com/webee/multisocket/errs"
+	"github.com/webee/multisocket/sender"
 )
 
 type socket struct {
@@ -16,6 +17,11 @@ type socket struct {
 
 	sync.Mutex
 	closed bool
+}
+
+// NewDefault creates a default setting Socket
+func NewDefault() (sock Socket) {
+	return New(connector.New(), sender.New(), receiver.New())
 }
 
 // New creates a Socket
@@ -37,6 +43,18 @@ func New(connector Connector, tx Sender, rx Receiver) (sock Socket) {
 	rx.AttachConnector(connector)
 
 	return
+}
+
+func (s *socket) GetConnector() Connector {
+	return s.Connector
+}
+
+func (s *socket) GetSender() Sender {
+	return s.Sender
+}
+
+func (s *socket) GetReceiver() Receiver {
+	return s.Receiver
 }
 
 func (s *socket) Close() error {

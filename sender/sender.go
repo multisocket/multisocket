@@ -4,6 +4,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/webee/multisocket/errs"
+
 	"github.com/webee/multisocket/message"
 
 	log "github.com/sirupsen/logrus"
@@ -45,16 +47,24 @@ func New() Sender {
 // NewWithOptions create a sender with options
 func NewWithOptions(ovs ...*options.OptionValue) Sender {
 	s := &sender{
-		Options:            options.NewOptions(),
 		attachedConnectors: make(map[Connector]struct{}),
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
 	}
+	s.Options = options.NewOptions().SetOptionChangeHook(s.onOptionChange)
 	for _, ov := range ovs {
 		s.SetOption(ov.Option, ov.Value)
 	}
-	s.sendq = make(chan *Message, s.sendQueueSize())
+	// default
+	s.Options.SetOptionIfNotExists(OptionSendQueueSize, defaultSendQueueSize)
 	return s
+}
+
+func (s *sender) onOptionChange(opt options.Option, oldVal, newVal interface{}) {
+	switch opt {
+	case OptionSendQueueSize:
+		s.sendq = make(chan *Message, s.sendQueueSize())
+	}
 }
 
 func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan struct{}) (err error) {
@@ -62,9 +72,9 @@ func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan st
 	if bestEffort {
 		select {
 		case <-closeq:
-			return ErrClosed
+			return errs.ErrClosed
 		case <-s.closedq:
-			return ErrClosed
+			return errs.ErrClosed
 		case sendq <- msg:
 			return nil
 		default:
@@ -83,12 +93,12 @@ func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan st
 
 	select {
 	case <-closeq:
-		err = ErrClosed
+		err = errs.ErrClosed
 	case <-s.closedq:
-		err = ErrClosed
+		err = errs.ErrClosed
 	case sendq <- msg:
 	case <-tq:
-		err = ErrTimeout
+		err = errs.ErrTimeout
 	}
 	if timeoutTimer != nil {
 		timeoutTimer.Stop()
@@ -119,6 +129,10 @@ func (s *sender) AttachConnector(connector Connector) {
 }
 
 // options
+func (s *sender) ttl() uint8 {
+	return OptionTTL.Value(s.GetOptionDefault(OptionTTL, defaultMsgTTL))
+}
+
 func (s *sender) sendQueueSize() uint16 {
 	return OptionSendQueueSize.Value(s.GetOptionDefault(OptionSendQueueSize, defaultSendQueueSize))
 }
@@ -242,8 +256,7 @@ func (p *pipe) sendRawMsg(msg *Message) (err error) {
 }
 
 func (s *sender) newMsg(sendType uint8, dest MsgPath, content []byte, extras [][]byte) (msg *Message) {
-	ttl := OptionTTL.Value(s.GetOptionDefault(OptionTTL, defaultMsgTTL))
-	return newMessage(sendType, ttl, dest, content, extras)
+	return newMessage(sendType, s.ttl(), dest, content, extras)
 }
 
 func (s *sender) sendTo(msg *Message) (err error) {
