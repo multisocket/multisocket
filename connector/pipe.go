@@ -87,7 +87,7 @@ func (p *pipe) SendTimeout(timeout time.Duration, msg []byte, extras ...[]byte) 
 		return
 	}
 
-	tq := time.After(timeout)
+	tm := time.NewTimer(timeout)
 	done := make(chan struct{})
 
 	go func() {
@@ -99,9 +99,11 @@ func (p *pipe) SendTimeout(timeout time.Duration, msg []byte, extras ...[]byte) 
 		done <- struct{}{}
 	}()
 	select {
-	case <-tq:
+	case <-tm.C:
+		go p.Close()
 		err = errs.ErrTimeout
 	case <-done:
+		tm.Stop()
 	}
 	return
 }
@@ -120,7 +122,7 @@ func (p *pipe) RecvTimeout(timeout time.Duration) (msg []byte, err error) {
 		return
 	}
 
-	tq := time.After(timeout)
+	tm := time.NewTimer(timeout)
 	done := make(chan struct{})
 	go func() {
 		if msg, err = p.c.Recv(); err != nil {
@@ -132,9 +134,11 @@ func (p *pipe) RecvTimeout(timeout time.Duration) (msg []byte, err error) {
 	}()
 
 	select {
-	case <-tq:
+	case <-tm.C:
+		go p.Close()
 		err = errs.ErrTimeout
 	case <-done:
+		tm.Stop()
 	}
 	return
 }

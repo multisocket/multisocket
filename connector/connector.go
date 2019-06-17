@@ -13,6 +13,7 @@ import (
 type (
 	connector struct {
 		options.Options
+
 		sync.Mutex
 		negotiator        Negotiator
 		limit             int
@@ -25,7 +26,7 @@ type (
 )
 
 const (
-	// -1 no limit
+	// -1: no limit
 	defaultConnLimit = -1
 )
 

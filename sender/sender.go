@@ -13,18 +13,17 @@ import (
 type (
 	sender struct {
 		options.Options
+		sendq   chan *Message
+		closedq chan struct{}
 
 		sync.Mutex
 		attachedConnectors map[Connector]struct{}
-		closed             bool
-		closedq            chan struct{}
 		pipes              map[uint32]*pipe
-		sendq              chan *Message
 	}
 
 	pipe struct {
-		closedq chan struct{}
 		p       Pipe
+		closedq chan struct{}
 		sendq   chan *Message
 	}
 )
@@ -48,7 +47,6 @@ func NewWithOptions(ovs ...*options.OptionValue) Sender {
 	s := &sender{
 		Options:            options.NewOptions(),
 		attachedConnectors: make(map[Connector]struct{}),
-		closed:             false,
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
 	}
@@ -309,12 +307,14 @@ func (s *sender) SendMsg(msg *Message) error {
 }
 
 func (s *sender) Close() {
+	select {
+	case <-s.closedq:
+		return
+	default:
+	}
+
 	s.Lock()
 	defer s.Unlock()
-	if s.closed {
-		return
-	}
-	s.closed = true
 
 	// unregister
 	for conns := range s.attachedConnectors {

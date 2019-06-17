@@ -12,18 +12,17 @@ import (
 type (
 	receiver struct {
 		options.Options
+		recvq   chan *Message
+		closedq chan struct{}
 
 		sync.Mutex
 		attachedConnectors map[Connector]struct{}
-		closed             bool
-		closedq            chan struct{}
 		pipes              map[uint32]*pipe
-		recvq              chan *Message
 	}
 
 	pipe struct {
-		closedq chan struct{}
 		p       Pipe
+		closedq chan struct{}
 	}
 )
 
@@ -51,7 +50,6 @@ func NewWithOptions(ovs ...*options.OptionValue) Receiver {
 	r := &receiver{
 		Options:            options.NewOptions(),
 		attachedConnectors: make(map[Connector]struct{}),
-		closed:             false,
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
 	}
@@ -298,12 +296,14 @@ func (r *receiver) Recv() (content []byte, err error) {
 }
 
 func (r *receiver) Close() {
+	select {
+	case <-r.closedq:
+		return
+	default:
+	}
+
 	r.Lock()
 	defer r.Unlock()
-	if r.closed {
-		return
-	}
-	r.closed = true
 
 	// unregister
 	for conns := range r.attachedConnectors {

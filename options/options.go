@@ -119,10 +119,14 @@ func NewOptionValue(opt Option, val interface{}) *OptionValue {
 }
 
 // NewOptions create an option set.
-func NewOptions() Options {
-	return &options{
+func NewOptions(ovs ...*OptionValue) Options {
+	opts := &options{
 		opts: make(map[Option]interface{}),
 	}
+	for _, ov := range ovs {
+		opts.SetOption(ov.Option, ov.Value)
+	}
+	return opts
 }
 
 // NewOptionsWithUpDownStreamsAndAccepts create an option set with up/down streams and accepts.
