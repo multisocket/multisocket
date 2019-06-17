@@ -3,7 +3,6 @@ package tcp
 import (
 	"fmt"
 	"net"
-	"sync"
 
 	"github.com/webee/multisocket/errs"
 
@@ -17,19 +16,15 @@ type (
 	dialer struct {
 		options.Options
 
-		addr string
+		addr *net.TCPAddr
 	}
 
 	listener struct {
 		options.Options
-		sync.Mutex
+
 		addr     *net.TCPAddr
 		bound    net.Addr
 		listener *net.TCPListener
-	}
-
-	primitiveConn struct {
-		net.Conn
 	}
 )
 
@@ -63,15 +58,7 @@ func configTCP(conn *net.TCPConn, opts options.Options) error {
 }
 
 func (d *dialer) Dial() (_ transport.Connection, err error) {
-	var (
-		addr *net.TCPAddr
-	)
-
-	if addr, err = transport.ResolveTCPAddr(d.addr); err != nil {
-		return nil, err
-	}
-
-	conn, err := net.DialTCP(scheme, nil, addr)
+	conn, err := net.DialTCP(scheme, nil, d.addr)
 	if err != nil {
 		return nil, err
 	}
@@ -80,22 +67,7 @@ func (d *dialer) Dial() (_ transport.Connection, err error) {
 		return nil, err
 	}
 
-	return transport.NewConnection(Transport, &primitiveConn{conn}, d.Options)
-}
-
-func (l *listener) Accept() (transport.Connection, error) {
-	if l.listener == nil {
-		return nil, errs.ErrClosed
-	}
-	conn, err := l.listener.AcceptTCP()
-	if err != nil {
-		return nil, err
-	}
-	if err = configTCP(conn, l.Options); err != nil {
-		conn.Close()
-		return nil, err
-	}
-	return transport.NewConnection(Transport, &primitiveConn{conn}, l.Options)
+	return transport.NewConnection(Transport, transport.NewPrimitiveConn(conn), d.Options)
 }
 
 func (l *listener) Listen() (err error) {
@@ -106,6 +78,22 @@ func (l *listener) Listen() (err error) {
 	return
 }
 
+func (l *listener) Accept() (transport.Connection, error) {
+	if l.listener == nil {
+		return nil, errs.ErrBadOperateState
+	}
+
+	conn, err := l.listener.AcceptTCP()
+	if err != nil {
+		return nil, err
+	}
+	if err = configTCP(conn, l.Options); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return transport.NewConnection(Transport, transport.NewPrimitiveConn(conn), l.Options)
+}
+
 func (l *listener) Address() string {
 	if b := l.bound; b != nil {
 		return fmt.Sprintf("%s://%s", scheme, b.String())
@@ -114,8 +102,10 @@ func (l *listener) Address() string {
 }
 
 func (l *listener) Close() error {
-	l.listener.Close()
-	return nil
+	if l.listener == nil {
+		return nil
+	}
+	return l.listener.Close()
 }
 
 func (t tcpTran) Scheme() string {
@@ -130,14 +120,16 @@ func newDefaultOptions() options.Options {
 		WithOption(transport.OptionMaxRecvMsgSize, 1024*1024)
 }
 
-func (t tcpTran) NewDialer(addr string) (transport.Dialer, error) {
-	var err error
-	if addr, err = transport.StripScheme(t, addr); err != nil {
+func (t tcpTran) NewDialer(address string) (transport.Dialer, error) {
+	var (
+		err  error
+		addr *net.TCPAddr
+	)
+	if address, err = transport.StripScheme(t, address); err != nil {
 		return nil, err
 	}
 
-	// check to ensure the provided addr resolves correctly.
-	if _, err = transport.ResolveTCPAddr(addr); err != nil {
+	if addr, err = transport.ResolveTCPAddr(address); err != nil {
 		return nil, err
 	}
 
@@ -146,25 +138,21 @@ func (t tcpTran) NewDialer(addr string) (transport.Dialer, error) {
 	return d, nil
 }
 
-func (t tcpTran) NewListener(addr string) (transport.Listener, error) {
-	var err error
-	l := &listener{Options: newDefaultOptions()}
+func (t tcpTran) NewListener(address string) (transport.Listener, error) {
+	var (
+		err  error
+		addr *net.TCPAddr
+	)
 
-	if addr, err = transport.StripScheme(t, addr); err != nil {
+	if address, err = transport.StripScheme(t, address); err != nil {
 		return nil, err
 	}
 
-	if l.addr, err = transport.ResolveTCPAddr(addr); err != nil {
+	if addr, err = transport.ResolveTCPAddr(address); err != nil {
 		return nil, err
 	}
+
+	l := &listener{Options: newDefaultOptions(), addr: addr}
 
 	return l, nil
-}
-
-func (pc *primitiveConn) LocalAddress() string {
-	return pc.Conn.LocalAddr().String()
-}
-
-func (pc *primitiveConn) RemoteAddress() string {
-	return pc.Conn.RemoteAddr().String()
 }

@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
@@ -60,11 +61,14 @@ func (l *listener) isStopped() bool {
 
 // serve spins in a loop, calling the accepter's Accept routine.
 func (l *listener) serve() {
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithFields(log.Fields{"addr": l.addr, "action": "start"}).Debug("accept")
+	}
 	for {
 		// If the underlying PipeListener is closed, or not
 		// listening, we expect to return back with an error.
 		if tc, err := l.l.Accept(); err == errs.ErrClosed {
-			return
+			break
 		} else if err == nil {
 			if l.isStopped() {
 				tc.Close()
@@ -75,6 +79,9 @@ func (l *listener) serve() {
 			// Debounce a little bit, to avoid thrashing the CPU.
 			time.Sleep(time.Second / 100)
 		}
+	}
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithFields(log.Fields{"addr": l.addr, "action": "end"}).Debug("accept")
 	}
 }
 

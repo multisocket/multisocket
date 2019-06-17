@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
@@ -152,8 +153,14 @@ func (d *dialer) dial(redial bool) error {
 	d.dialing = true
 	d.Unlock()
 
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithFields(log.Fields{"addr": d.addr, "action": "start"}).Debug("dial")
+	}
 	tc, err := d.d.Dial()
 	if err == nil {
+		if log.IsLevelEnabled(log.DebugLevel) {
+			log.WithFields(log.Fields{"addr": d.addr, "action": "success"}).Debug("dial")
+		}
 		d.parent.addPipe(newPipe(d.parent, tc, d, nil))
 
 		d.Lock()
@@ -162,6 +169,9 @@ func (d *dialer) dial(redial bool) error {
 		d.reconnTime = d.minReconnectTime()
 		d.Unlock()
 		return nil
+	}
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithError(err).WithFields(log.Fields{"addr": d.addr, "action": "failed"}).Debug("dial")
 	}
 
 	d.Lock()

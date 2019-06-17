@@ -6,5 +6,6 @@ package all
 import (
 	// import transports
 	_ "github.com/webee/multisocket/transport/inproc"
+	_ "github.com/webee/multisocket/transport/ipc"
 	_ "github.com/webee/multisocket/transport/tcp"
 )

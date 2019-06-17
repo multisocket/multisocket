@@ -53,6 +53,16 @@ type (
 		baseOption
 	}
 
+	// StringOption is option with string value.
+	StringOption interface {
+		Option
+		Value(val interface{}) string
+	}
+
+	stringOption struct {
+		baseOption
+	}
+
 	// TimeDurationOption is option with time duration value.
 	TimeDurationOption interface {
 		Option
@@ -100,6 +110,16 @@ type (
 	}
 
 	uint32Option struct {
+		baseOption
+	}
+
+	// Int32Option is option with int32 value.
+	Int32Option interface {
+		Option
+		Value(val interface{}) int32
+	}
+
+	int32Option struct {
 		baseOption
 	}
 )
@@ -279,6 +299,26 @@ func (o *boolOption) Value(val interface{}) bool {
 	return val.(bool)
 }
 
+// NewStringOption create a string option
+func NewStringOption(name interface{}) StringOption {
+	return &stringOption{baseOption{name}}
+}
+
+// Validate validate the option value
+func (o *stringOption) Validate(val interface{}) (newVal interface{}, err error) {
+	if _, ok := val.(string); !ok {
+		err = ErrInvalidOptionValue
+		return
+	}
+	newVal = val
+	return
+}
+
+// Value get option's value, must ensure option value is not empty
+func (o *stringOption) Value(val interface{}) string {
+	return val.(string)
+}
+
 // NewTimeDurationOption create a time duration option
 func NewTimeDurationOption(name interface{}) TimeDurationOption {
 	return &timeDurationOption{baseOption{name}}
@@ -398,4 +438,31 @@ func (o *uint32Option) Validate(val interface{}) (newVal interface{}, err error)
 // Value get option's value, must ensure option value is not empty
 func (o *uint32Option) Value(val interface{}) uint32 {
 	return val.(uint32)
+}
+
+// NewInt32Option create an int32 option
+func NewInt32Option(name interface{}) Int32Option {
+	return &int32Option{baseOption{name}}
+}
+
+// Validate validate the option value
+func (o *int32Option) Validate(val interface{}) (newVal interface{}, err error) {
+	switch x := val.(type) {
+	case int32:
+		newVal = x
+	case int:
+		if x >= math.MinInt32 && x <= math.MaxInt32 {
+			newVal = int32(x)
+			break
+		}
+		err = ErrInvalidOptionValue
+	default:
+		err = ErrInvalidOptionValue
+	}
+	return
+}
+
+// Value get option's value, must ensure option value is not empty
+func (o *int32Option) Value(val interface{}) int32 {
+	return val.(int32)
 }

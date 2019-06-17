@@ -11,15 +11,38 @@ import (
 	"github.com/webee/multisocket/options"
 )
 
-// connection implements the Connection interface on top of net.Conn.
-type connection struct {
-	transport Transport
-	raw       bool
-	c         PrimitiveConnection
-	maxrx     uint32
+type (
+	// connection implements the Connection interface on top of net.Conn.
+	connection struct {
+		transport Transport
+		raw       bool
+		c         PrimitiveConnection
+		maxrx     uint32
 
-	sync.Mutex
-	closed bool
+		sync.Mutex
+		closed bool
+	}
+
+	// PrimitiveConnection is primitive connection made by transport.
+	PrimitiveConnection interface {
+		Read(b []byte) (n int, err error)
+		Write(b []byte) (n int, err error)
+		Close() error
+		LocalAddress() string
+		RemoteAddress() string
+	}
+
+	primitiveConn struct {
+		net.Conn
+	}
+)
+
+func (pc *primitiveConn) LocalAddress() string {
+	return pc.Conn.LocalAddr().String()
+}
+
+func (pc *primitiveConn) RemoteAddress() string {
+	return pc.Conn.RemoteAddr().String()
 }
 
 func (conn *connection) Transport() Transport {
@@ -106,25 +129,20 @@ func (conn *connection) RemoteAddress() string {
 	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.c.RemoteAddress())
 }
 
-// PrimitiveConnection is primitive connection made by transport.
-type PrimitiveConnection interface {
-	Read(b []byte) (n int, err error)
-	Write(b []byte) (n int, err error)
-	Close() error
-	LocalAddress() string
-	RemoteAddress() string
+func NewPrimitiveConn(c net.Conn) PrimitiveConnection {
+	return &primitiveConn{c}
 }
 
 // NewConnection allocates a new Connection using the supplied net.Conn
-func NewConnection(transport Transport, c PrimitiveConnection, opts options.Options) (Connection, error) {
+func NewConnection(transport Transport, pc PrimitiveConnection, opts options.Options) (Connection, error) {
 	if OptionConnRawMode.Value(opts.GetOptionDefault(OptionConnRawMode, false)) {
-		return newRawConnection(transport, c, opts)
+		return newRawConnection(transport, pc, opts)
 	}
 
 	conn := &connection{
 		transport: transport,
 		raw:       false,
-		c:         c,
+		c:         pc,
 	}
 
 	if val, ok := opts.GetOption(OptionMaxRecvMsgSize); ok {

@@ -10,7 +10,8 @@ func (e Err) Error() string {
 const (
 	ErrClosed                = Err("object is closed")
 	ErrTimeout               = Err("operation time out")
-	ErrAddrInUse             = Err("address in use")
+	ErrBadOperateState       = Err("bad operation state")
+	ErrAddrInUse             = Err("address already in use")
 	ErrOperationNotSupported = Err("operation not supported")
 	ErrBadTransport          = Err("invalid or unsupported transport")
 	ErrBadMsg                = Err("bad message")

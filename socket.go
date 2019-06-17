@@ -67,11 +67,9 @@ func (s *socket) Close() error {
 	s.Unlock()
 
 	s.Connector.Close()
+	s.Receiver.Close()
 	if s.Sender != nil {
 		s.Sender.Close()
-	}
-	if s.Receiver != nil {
-		s.Receiver.Close()
 	}
 
 	return nil
