@@ -21,10 +21,9 @@ type (
 	req struct {
 		multisocket.Socket
 		timeout time.Duration
+		closedq chan struct{}
 
-		sync.Mutex
-		started  bool
-		closed   bool
+		sync.RWMutex
 		reqID    uint32
 		requests map[uint32]*Request
 	}
@@ -46,10 +45,12 @@ func NewReqWithTimeout(timeout time.Duration) Req {
 			sender.NewWithOptions(options.NewOptionValue(sender.OptionSendBestEffort, true)),
 			receiver.New()),
 		timeout:  timeout,
+		closedq:  make(chan struct{}),
 		reqID:    uint32(time.Now().UnixNano()), // quasi-random
 		requests: make(map[uint32]*Request),
 	}
 
+	// TODO: dynamic adjust worker
 	go req.run()
 	return req
 }
@@ -72,7 +73,7 @@ func (r *req) run() {
 		if log.IsLevelEnabled(log.TraceLevel) {
 			log.WithField("requestID", requestID).WithField("action", "start").Trace("recv")
 		}
-		r.Lock()
+		r.RLock()
 		if request, ok = r.requests[requestID]; !ok {
 			r.Unlock()
 			if log.IsLevelEnabled(log.DebugLevel) {
@@ -81,7 +82,7 @@ func (r *req) run() {
 			continue
 		}
 		delete(r.requests, requestID)
-		r.Unlock()
+		r.RUnlock()
 
 		request.Reply = msg.Content[4:]
 		request.done(nil)
@@ -99,15 +100,32 @@ func (r *req) Request(content []byte) ([]byte, error) {
 	return r.ReqeustTimeout(r.timeout, content)
 }
 
-func (r *req) ReqeustTimeout(t time.Duration, content []byte) ([]byte, error) {
+func (r *req) ReqeustTimeout(t time.Duration, content []byte) (res []byte, err error) {
+	var (
+		tm *time.Timer
+		tq <-chan time.Time
+	)
+	if t > 0 {
+		tm = time.NewTimer(t)
+		tq = tm.C
+	}
+
 	request := r.ReqeustAsync(content)
 	select {
+	case <-r.closedq:
+		err = errs.ErrClosed
 	case request = <-request.Done:
-		return request.Reply, request.Err
-	case <-time.After(t):
+		res = request.Reply
+		err = request.Err
+	case <-tq:
 		request.Cancel()
-		return nil, errs.ErrTimeout
+		err = errs.ErrTimeout
+		return
 	}
+	if tm != nil {
+		tm.Stop()
+	}
+	return
 }
 
 func (r *req) ReqeustAsync(content []byte) *Request {
@@ -155,11 +173,11 @@ func (r *req) cancelRequest(requestID uint32) func() {
 }
 
 func (r *req) Close() error {
-	r.Lock()
-	defer r.Unlock()
-	if r.closed {
+	select {
+	case <-r.closedq:
 		return errs.ErrClosed
+	default:
+		close(r.closedq)
 	}
-	r.closed = true
 	return r.Socket.Close()
 }

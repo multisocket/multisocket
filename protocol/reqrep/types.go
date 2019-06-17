@@ -10,7 +10,7 @@ type (
 	// Request is a request object
 	Request struct {
 		Cancel func()
-		Err    error
+		Err    error // request error, not business error
 		Reply  []byte
 		Done   chan *Request
 	}

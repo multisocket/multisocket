@@ -25,13 +25,23 @@ type (
 		started bool
 		closed  bool
 	}
+	goRunner int
 )
+
+const (
+	defaultRunner = goRunner(0)
+)
+
+func (goRunner) Run(f func()) {
+	go f()
+}
 
 // NewRep create a Rep protocol instance
 func NewRep(handler Handler) Rep {
 	return &rep{
 		Socket:  multisocket.New(connector.New(), sender.New(), receiver.New()),
 		handler: handler,
+		runner:  defaultRunner,
 	}
 }
 
@@ -41,7 +51,9 @@ func (r *rep) SetRunner(runner Runner) {
 	if r.started {
 		return
 	}
-	r.runner = runner
+	if runner != nil {
+		r.runner = runner
+	}
 }
 
 func (r *rep) Start() {
@@ -76,11 +88,8 @@ func (r *rep) run() {
 		if msg, err = r.RecvMsg(); err != nil {
 			break
 		}
-		if r.runner != nil {
-			r.runner.Run(func() { r.handle(msg) })
-		} else {
-			go r.handle(msg)
-		}
+
+		r.runner.Run(func() { r.handle(msg) })
 	}
 }
 
