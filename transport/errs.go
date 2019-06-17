@@ -1,13 +1,11 @@
 package transport
 
-type err string
-
-func (e err) Error() string {
-	return string(e)
-}
+import (
+	"github.com/webee/multisocket/errs"
+)
 
 // errors
 const (
-	ErrConnRefused  = err("connection refused")
-	ErrNotListening = err("not listening")
+	ErrConnRefused  = errs.Err("connection refused")
+	ErrNotListening = errs.Err("not listening")
 )

@@ -67,13 +67,13 @@ type (
 		SetNegotiator(Negotiator)
 
 		Dial(addr string) error
-		DialOptions(addr string, opts options.Options) error
-		NewDialer(addr string, opts options.Options) (Dialer, error)
+		DialOptions(addr string, ovs ...*options.OptionValue) error
+		NewDialer(addr string, ovs ...*options.OptionValue) (Dialer, error)
 		StopDial(addr string)
 
 		Listen(addr string) error
-		ListenOptions(addr string, opts options.Options) error
-		NewListener(addr string, opts options.Options) (Listener, error)
+		ListenOptions(addr string, ovs ...*options.OptionValue) error
+		NewListener(addr string, ovs ...*options.OptionValue) (Listener, error)
 		StopListen(addr string)
 
 		GetPipe(id uint32) Pipe

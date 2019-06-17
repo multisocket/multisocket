@@ -1,12 +1,10 @@
 package connector
 
-type err string
-
-func (e err) Error() string {
-	return string(e)
-}
+import (
+	"github.com/webee/multisocket/errs"
+)
 
 // errors
 const (
-	ErrStopped = err("object is stopped")
+	ErrStopped = errs.Err("object is stopped")
 )

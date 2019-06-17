@@ -1,18 +1,18 @@
 package errs
 
-type err string
+type Err string
 
-func (e err) Error() string {
+func (e Err) Error() string {
 	return string(e)
 }
 
 // errors
 const (
-	ErrClosed                = err("object is closed")
-	ErrTimeout               = err("operation time out")
-	ErrAddrInUse             = err("address in use")
-	ErrOperationNotSupported = err("operation not supported")
-	ErrBadTransport          = err("invalid or unsupported transport")
-	ErrBadMsg                = err("bad message")
-	ErrMsgTooLong            = err("message is too long")
+	ErrClosed                = Err("object is closed")
+	ErrTimeout               = Err("operation time out")
+	ErrAddrInUse             = Err("address in use")
+	ErrOperationNotSupported = Err("operation not supported")
+	ErrBadTransport          = Err("invalid or unsupported transport")
+	ErrBadMsg                = Err("bad message")
+	ErrMsgTooLong            = Err("message is too long")
 )

@@ -204,18 +204,18 @@ func (c *connector) SetNegotiator(negotiator Negotiator) {
 }
 
 func (c *connector) Dial(addr string) error {
-	return c.DialOptions(addr, options.NewOptions())
+	return c.DialOptions(addr)
 }
 
-func (c *connector) DialOptions(addr string, opts options.Options) error {
-	d, err := c.NewDialer(addr, opts)
+func (c *connector) DialOptions(addr string, ovs ...*options.OptionValue) error {
+	d, err := c.NewDialer(addr, ovs...)
 	if err != nil {
 		return err
 	}
 	return d.Dial()
 }
 
-func (c *connector) NewDialer(addr string, opts options.Options) (d Dialer, err error) {
+func (c *connector) NewDialer(addr string, ovs ...*options.OptionValue) (d Dialer, err error) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -244,7 +244,7 @@ func (c *connector) NewDialer(addr string, opts options.Options) (d Dialer, err 
 		xd.stop()
 	}
 	d = xd
-	for _, ov := range opts.OptionValues() {
+	for _, ov := range ovs {
 		if err = d.SetOption(ov.Option, ov.Value); err != nil {
 			return
 		}
@@ -267,18 +267,18 @@ func (c *connector) StopDial(addr string) {
 }
 
 func (c *connector) Listen(addr string) error {
-	return c.ListenOptions(addr, options.NewOptions())
+	return c.ListenOptions(addr)
 }
 
-func (c *connector) ListenOptions(addr string, opts options.Options) error {
-	l, err := c.NewListener(addr, opts)
+func (c *connector) ListenOptions(addr string, ovs ...*options.OptionValue) error {
+	l, err := c.NewListener(addr, ovs...)
 	if err != nil {
 		return err
 	}
 	return l.Listen()
 }
 
-func (c *connector) NewListener(addr string, opts options.Options) (l Listener, err error) {
+func (c *connector) NewListener(addr string, ovs ...*options.OptionValue) (l Listener, err error) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -307,7 +307,7 @@ func (c *connector) NewListener(addr string, opts options.Options) (l Listener, 
 		xl.stop()
 	}
 	l = xl
-	for _, ov := range opts.OptionValues() {
+	for _, ov := range ovs {
 		if err = l.SetOption(ov.Option, ov.Value); err != nil {
 			tl.Close()
 			return

@@ -4,6 +4,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/webee/multisocket/errs"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket/message"
 	"github.com/webee/multisocket/options"
@@ -283,9 +285,9 @@ func (r *receiver) RecvMsg() (msg *Message, err error) {
 
 	select {
 	case <-r.closedq:
-		err = ErrClosed
+		err = errs.ErrClosed
 	case <-tq:
-		err = ErrTimeout
+		err = errs.ErrTimeout
 	case msg = <-r.recvq:
 	}
 	if timeoutTimer != nil {
