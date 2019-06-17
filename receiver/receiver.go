@@ -44,19 +44,19 @@ func init() {
 
 // New create a receiver.
 func New() Receiver {
-	return NewWithOptions()
+	return NewWithOptions(nil)
 }
 
 // NewWithOptions create a normal receiver with options.
-func NewWithOptions(ovs ...*options.OptionValue) Receiver {
+func NewWithOptions(ovs options.OptionValues) Receiver {
 	r := &receiver{
 		attachedConnectors: make(map[Connector]struct{}),
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
 	}
 	r.Options = options.NewOptions().SetOptionChangeHook(r.onOptionChange)
-	for _, ov := range ovs {
-		r.SetOption(ov.Option, ov.Value)
+	for opt, val := range ovs {
+		r.SetOption(opt, val)
 	}
 	// default
 	r.Options.SetOptionIfNotExists(OptionRecvQueueSize, defaultRecvQueueSize)

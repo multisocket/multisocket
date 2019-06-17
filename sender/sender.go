@@ -41,19 +41,19 @@ var (
 
 // New create a sender
 func New() Sender {
-	return NewWithOptions()
+	return NewWithOptions(nil)
 }
 
 // NewWithOptions create a sender with options
-func NewWithOptions(ovs ...*options.OptionValue) Sender {
+func NewWithOptions(ovs options.OptionValues) Sender {
 	s := &sender{
 		attachedConnectors: make(map[Connector]struct{}),
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
 	}
 	s.Options = options.NewOptions().SetOptionChangeHook(s.onOptionChange)
-	for _, ov := range ovs {
-		s.SetOption(ov.Option, ov.Value)
+	for opt, val := range ovs {
+		s.SetOption(opt, val)
 	}
 	// default
 	s.Options.SetOptionIfNotExists(OptionSendQueueSize, defaultSendQueueSize)

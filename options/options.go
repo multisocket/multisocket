@@ -17,7 +17,7 @@ type (
 		SetOptionIfNotExists(opt Option, val interface{}) (err error)
 		GetOption(opt Option) (val interface{}, ok bool)
 		GetOptionDefault(opt Option, def interface{}) (val interface{})
-		OptionValues() []*OptionValue
+		OptionValues() OptionValues
 		SetOptionChangeHook(hook OptionChangeHook) Options
 	}
 
@@ -27,11 +27,8 @@ type (
 		Validate(val interface{}) (newVal interface{}, err error)
 	}
 
-	// OptionValue option value pair
-	OptionValue struct {
-		Option Option
-		Value  interface{}
-	}
+	// OptionValues is option/value map
+	OptionValues = map[Option]interface{}
 
 	options struct {
 		sync.RWMutex
@@ -113,18 +110,18 @@ var (
 	ErrUnsupportedOption  = errors.New("unsupported option")
 )
 
-// NewOptionValue create a option value pair.
-func NewOptionValue(opt Option, val interface{}) *OptionValue {
-	return &OptionValue{opt, val}
+// NewOptions create an option set.
+func NewOptions() Options {
+	return NewOptionsWithValues(nil)
 }
 
-// NewOptions create an option set.
-func NewOptions(ovs ...*OptionValue) Options {
+// NewOptionsWithValues create an option set with option values.
+func NewOptionsWithValues(ovs OptionValues) Options {
 	opts := &options{
 		opts: make(map[Option]interface{}),
 	}
-	for _, ov := range ovs {
-		opts.SetOption(ov.Option, ov.Value)
+	for opt, val := range ovs {
+		opts.SetOption(opt, val)
 	}
 	return opts
 }
@@ -247,15 +244,13 @@ func (opts *options) GetOptionDefault(opt Option, def interface{}) (val interfac
 	return
 }
 
-func (opts *options) OptionValues() (res []*OptionValue) {
+func (opts *options) OptionValues() (res OptionValues) {
 	opts.RLock()
 	defer opts.RUnlock()
 
-	res = make([]*OptionValue, len(opts.opts))
-	idx := 0
+	res = make(map[Option]interface{})
 	for opt, val := range opts.opts {
-		res[idx] = &OptionValue{opt, val}
-		idx++
+		res[opt] = val
 	}
 	return
 }

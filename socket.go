@@ -28,7 +28,7 @@ func NewDefault() (sock Socket) {
 func New(connector Connector, tx Sender, rx Receiver) (sock Socket) {
 	if rx == nil {
 		// use receiver to check pipe closed
-		rx = receiver.NewWithOptions(options.NewOptionValue(receiver.OptionNoRecv, true))
+		rx = receiver.NewWithOptions(options.OptionValues{receiver.OptionNoRecv: true})
 	}
 
 	sock = &socket{
