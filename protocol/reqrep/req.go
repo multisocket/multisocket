@@ -53,6 +53,10 @@ func NewReqWithTimeout(timeout time.Duration) Req {
 	return req
 }
 
+func (r *req) GetSocket() multisocket.Socket {
+	return r.Socket
+}
+
 func (r *req) run() {
 	var (
 		err     error

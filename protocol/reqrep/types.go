@@ -3,11 +3,36 @@ package reqrep
 import (
 	"time"
 
+	"github.com/webee/multisocket"
+
 	"github.com/webee/multisocket/connector"
 )
 
 type (
-	// Request is a request object
+	// Req is the Req protocol
+	Req interface {
+		connector.ConnectorAction
+		GetSocket() multisocket.Socket
+		Close() error
+
+		// actions
+		Request(content []byte) ([]byte, error)
+		ReqeustTimeout(t time.Duration, content []byte) ([]byte, error)
+		ReqeustAsync(content []byte) *Request
+	}
+
+	// Rep is the Rep protocol
+	Rep interface {
+		connector.ConnectorAction
+		GetSocket() multisocket.Socket
+		Close() error
+
+		// actions
+		SetRunner(runner Runner)
+		Start()
+	}
+
+	// Request is a request object for Req
 	Request struct {
 		Cancel func()
 		Err    error // request error, not business error
@@ -15,33 +40,12 @@ type (
 		Done   chan *Request
 	}
 
-	// Req is the Req protocol
-	Req interface {
-		connector.ConnectorAction
-
-		// actions
-		Request(content []byte) ([]byte, error)
-		ReqeustTimeout(t time.Duration, content []byte) ([]byte, error)
-		ReqeustAsync(content []byte) *Request
-		Close() error
-	}
-
-	// Handler is request handler
+	// Handler is request handler for Rep
 	Handler interface {
 		Handle(req []byte) (rep []byte)
 	}
-	// Runner is handler runner
+	// Runner is handler runner for Rep
 	Runner interface {
 		Run(func())
-	}
-
-	// Rep is the Rep protocol
-	Rep interface {
-		connector.ConnectorAction
-
-		// actions
-		SetRunner(runner Runner)
-		Start()
-		Close() error
 	}
 )

@@ -42,6 +42,10 @@ func NewRep(handler Handler) Rep {
 	}
 }
 
+func (r *rep) GetSocket() multisocket.Socket {
+	return r.Socket
+}
+
 func (r *rep) SetRunner(runner Runner) {
 	r.Lock()
 	defer r.Unlock()
