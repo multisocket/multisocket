@@ -233,7 +233,7 @@ RECVING:
 			if log.IsLevelEnabled(log.DebugLevel) {
 				log.WithField("domain", "receiver").
 					WithError(err).
-					WithFields(log.Fields{"id": p.p.ID()}).
+					WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
 					Debug("recvMsg")
 			}
 			break
@@ -246,6 +246,12 @@ RECVING:
 		if msg == nil {
 			// ignore nil msg
 			continue
+		}
+
+		if msg.Header.HasFlags(message.MsgFlagInternal) {
+			// ignore none internal messages.
+			// TODO: handle internal messages.
+			return
 		}
 
 		select {

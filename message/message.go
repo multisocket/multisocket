@@ -32,6 +32,13 @@ type (
 		Content     []byte
 		Extras      [][]byte
 	}
+
+	// TODO:
+	// InternalMsg internal message content structure.
+	InternalMsg struct {
+		Type uint8
+		// others
+	}
 )
 
 const (
@@ -51,10 +58,17 @@ const (
 
 // Msg Flags
 const (
-	// socket internal message
+	// socket internal message, used by socket internal
 	MsgFlagInternal uint8 = 1 << (iota + 2)
-	// protocol control message, use by protocols
+	// protocol control message, predefined flag, use by protocols implementations or others.
 	MsgFlagControl
+)
+
+// TODO:
+// Internal Messages
+const (
+	// close peer
+	InternalMsgClosePeer uint8 = iota
 )
 
 // SendType get message's send type

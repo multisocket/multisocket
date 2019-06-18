@@ -139,7 +139,7 @@ func (c *connector) addPipe(p *pipe) {
 		if err := c.negotiator.Negotiate(p); err != nil {
 			if log.IsLevelEnabled(log.DebugLevel) {
 				log.WithField("domain", "connector").
-					WithFields(log.Fields{"id": p.ID(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
+					WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
 					WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
 					WithField("action", "netotiating").
 					WithError(err).
@@ -184,7 +184,7 @@ func (c *connector) remPipe(p *pipe) {
 	c.Unlock()
 
 	log.WithField("domain", "connector").
-		WithFields(log.Fields{"id": p.ID()}).
+		WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
 		Debug("remove pipe")
 
 	// If the pipe was from a dialer, inform it so that it can redial.
