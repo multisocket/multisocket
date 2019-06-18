@@ -15,7 +15,7 @@ type (
 	// MsgHeader message meta data
 	MsgHeader struct {
 		// Flags
-		Flags    uint8 // 6:other flags|2:send type one, all, rely
+		Flags    uint8 // 6:other flags|2:send type to/one,all,dest
 		TTL      uint8 // time to live
 		Hops     uint8 // node count from origin
 		Distance uint8 // node count to destination

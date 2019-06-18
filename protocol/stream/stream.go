@@ -61,11 +61,12 @@ var (
 
 // New create a Stream protocol instance
 func New() Stream {
-	return NewWithOptions(options.NewOptions())
+	return NewWithOptions(nil)
 }
 
 // NewWithOptions create a Stream protocol instance with options
-func NewWithOptions(opts options.Options) Stream {
+func NewWithOptions(ovs options.OptionValues) Stream {
+	opts := options.NewOptionsWithValues(ovs)
 	streamQueueSize := OptionStreamQueueSize.Value(opts.GetOptionDefault(OptionStreamQueueSize, defaultConnQueueSize))
 	streamRecvQueueSize := OptionConnRecvQueueSize.Value(opts.GetOptionDefault(OptionConnRecvQueueSize, defaultConnRecvQueueSize))
 	acceptable := OptionAcceptable.Value(opts.GetOptionDefault(OptionAcceptable, true))
