@@ -1,25 +1,19 @@
+// socket example shows the usage of sockets: create, send/recv, close and raw socket
+
 package main
 
 import (
 	"fmt"
 	"os"
-	"os/signal"
-	"strings"
-	"syscall"
 	"time"
 
-	"github.com/webee/multisocket/transport"
-
-	"github.com/webee/multisocket/options"
-
 	log "github.com/sirupsen/logrus"
-
-	_ "github.com/webee/multisocket/transport/all"
-
 	"github.com/webee/multisocket"
-	"github.com/webee/multisocket/connector"
-	"github.com/webee/multisocket/receiver"
-	"github.com/webee/multisocket/sender"
+	"github.com/webee/multisocket/examples"
+	"github.com/webee/multisocket/message"
+	"github.com/webee/multisocket/options"
+	"github.com/webee/multisocket/transport"
+	_ "github.com/webee/multisocket/transport/all"
 )
 
 func init() {
@@ -47,21 +41,21 @@ func main() {
 }
 
 func server(t, addr, rawAddr string) {
-	sock := multisocket.New(connector.New(), sender.New(), receiver.New())
+	sock := multisocket.NewDefault()
 
 	switch t {
 	case "dial":
 		if err := sock.Dial(addr); err != nil {
 			log.WithField("err", err).Panicf("dial")
 		}
-		if err := sock.DialOptions(rawAddr, options.NewOptions().WithOption(transport.OptionConnRawMode, true)); err != nil {
+		if err := sock.DialOptions(rawAddr, options.OptionValues{transport.OptionConnRawMode: true}); err != nil {
 			log.WithField("err", err).Panicf("dial raw")
 		}
 	default:
 		if err := sock.Listen(addr); err != nil {
 			log.WithField("err", err).Panicf("listen")
 		}
-		if err := sock.ListenOptions(rawAddr, options.NewOptions().WithOption(transport.OptionConnRawMode, true)); err != nil {
+		if err := sock.ListenOptions(rawAddr, options.OptionValues{transport.OptionConnRawMode: true}); err != nil {
 			log.WithField("err", err).Panicf("listen raw")
 		}
 	}
@@ -69,7 +63,7 @@ func server(t, addr, rawAddr string) {
 	worker := func(n int) {
 		var (
 			err error
-			msg *multisocket.Message
+			msg *message.Message
 		)
 
 		for {
@@ -79,22 +73,17 @@ func server(t, addr, rawAddr string) {
 			}
 
 			s := string(msg.Content)
-			if strings.HasPrefix(s, "quit") {
-				if err = sock.SendMsg(multisocket.NewControlMessage(multisocket.ControlTypeClosePeer, multisocket.SendTypeReply, msg.Source)); err != nil {
-					log.WithField("err", err).Errorf("send control")
-				}
-			} else {
-				content := []byte(fmt.Sprintf("[#%d]Hello, %s", n, s))
-				if err = sock.SendTo(msg.Source, content); err != nil {
-					log.WithField("err", err).Errorf("send")
-				}
+			content := []byte(fmt.Sprintf("[#%d]Hello, %s", n, s))
+			if err = sock.SendTo(msg.Source, content); err != nil {
+				log.WithField("err", err).Errorf("send")
 			}
 		}
 	}
+	// recving concurrently
 	go worker(0)
-	// go worker(1)
+	go worker(1)
 
-	setupSignal()
+	examples.SetupSignal()
 }
 
 func client(t, addr string, name string) {
@@ -103,14 +92,7 @@ func client(t, addr string, name string) {
 		content []byte
 	)
 
-	sock := multisocket.New(connector.New(),
-		sender.NewWithOptions(
-			options.NewOptionValue(sender.OptionSendQueueSize, 11),
-		),
-		receiver.New())
-	if err = sock.Sender().SetOption(sender.OptionTTL, 3); err != nil {
-		log.WithField("err", err).Panic("set sender option")
-	}
+	sock := multisocket.NewDefault()
 
 	switch t {
 	case "listen":
@@ -123,15 +105,12 @@ func client(t, addr string, name string) {
 		}
 	}
 
+	// sending
 	go func() {
 		var content string
 		idx := 0
 		for {
-			if idx%4 == 0 {
-				content = "quitxxx"
-			} else {
-				content = fmt.Sprintf("%s#%d", name, idx)
-			}
+			content = fmt.Sprintf("%s#%d", name, idx)
 			if err = sock.Send([]byte(content)); err != nil {
 				log.WithField("err", err).Errorf("send")
 			}
@@ -141,6 +120,7 @@ func client(t, addr string, name string) {
 		}
 	}()
 
+	// recving
 	go func() {
 		for {
 			if content, err = sock.Recv(); err != nil {
@@ -150,21 +130,5 @@ func client(t, addr string, name string) {
 		}
 	}()
 
-	setupSignal()
-}
-
-// setupSignal register signals handler and waiting for.
-func setupSignal() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	for {
-		s := <-c
-		log.WithField("signal", s.String()).Info("signal")
-		switch s {
-		case os.Interrupt, syscall.SIGTERM:
-			return
-		default:
-			return
-		}
-	}
+	examples.SetupSignal()
 }

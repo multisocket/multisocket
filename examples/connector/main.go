@@ -1,15 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	log "github.com/sirupsen/logrus"
-
-	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/connector"
+	"github.com/webee/multisocket/errs"
+	"github.com/webee/multisocket/examples"
 	_ "github.com/webee/multisocket/transport/all"
 )
 
@@ -29,47 +28,37 @@ func main() {
 	if err := conns.Listen(os.Args[1]); err != nil {
 		log.WithField("err", err).Panicf("listen")
 	}
-	time.AfterFunc(time.Second*6, func() {
+	time.AfterFunc(time.Second*10, func() {
+		// limit connections to 1, keep already connected pipes, can't establish connections more than 1.
 		conns.SetOption(connector.OptionConnLimit, 1)
 	})
 
-	setupSignal()
+	examples.SetupSignal()
 }
 
 type handler int
 
-func (handler) HandlePipeEvent(event multisocket.PipeEvent, pipe socket.Pipe) {
+func (handler) HandlePipeEvent(event connector.PipeEvent, pipe connector.Pipe) {
 	switch event {
-	case multisocket.PipeEventAdd:
+	case connector.PipeEventAdd:
 		pipe.Send([]byte("hello"))
 		go readPipe(pipe)
-	case multisocket.PipeEventRemove:
+	case connector.PipeEventRemove:
 	}
 }
 
-func readPipe(pipe socket.Pipe) {
+func readPipe(pipe connector.Pipe) {
+	var (
+		err     error
+		content []byte
+	)
 	for {
-		if _, err := pipe.Recv(); err != nil {
+		if content, err = pipe.Recv(); err != nil {
 			log.WithField("err", err).Errorf("recv")
-			if err == multisocket.ErrClosed {
+			if err == errs.ErrClosed {
 				break
 			}
 		}
-	}
-}
-
-// setupSignal register signals handler and waiting for.
-func setupSignal() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	for {
-		s := <-c
-		log.WithField("signal", s.String()).Info("signal")
-		switch s {
-		case os.Interrupt, syscall.SIGTERM:
-			return
-		default:
-			return
-		}
+		fmt.Fprintln(os.Stderr, string(content))
 	}
 }

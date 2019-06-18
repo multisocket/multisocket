@@ -152,7 +152,7 @@ func (c *connector) addPipe(p *pipe) {
 	if c.limit == -1 || c.limit > len(c.pipes) {
 		if log.IsLevelEnabled(log.DebugLevel) {
 			log.WithField("domain", "connector").
-				WithFields(log.Fields{"id": p.ID(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
+				WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
 				WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
 				Debug("add pipe")
 		}
@@ -166,7 +166,7 @@ func (c *connector) addPipe(p *pipe) {
 	} else {
 		if log.IsLevelEnabled(log.DebugLevel) {
 			log.WithField("domain", "connector").
-				WithFields(log.Fields{"id": p.ID(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
+				WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
 				WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
 				Debug("drop pipe")
 		}

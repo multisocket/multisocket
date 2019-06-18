@@ -1,7 +1,6 @@
 package connector
 
 import (
-	"sync"
 	"time"
 
 	"github.com/webee/multisocket/errs"
@@ -15,13 +14,12 @@ type pipe struct {
 	sendTimeout time.Duration
 	recvTimeout time.Duration
 
-	sync.Mutex
-	id     uint32
-	parent *connector
-	c      transport.Connection
-	l      *listener
-	d      *dialer
-	closed bool
+	closedq chan struct{}
+	id      uint32
+	parent  *connector
+	c       transport.Connection
+	l       *listener
+	d       *dialer
 }
 
 var pipeID = utils.NewRecyclableIDGenerator()
@@ -30,11 +28,13 @@ func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener)
 	return &pipe{
 		sendTimeout: PipeOptionSendTimeout.Value(parent.GetOptionDefault(PipeOptionSendTimeout, time.Duration(0))),
 		recvTimeout: PipeOptionRecvTimeout.Value(parent.GetOptionDefault(PipeOptionRecvTimeout, time.Duration(0))),
-		id:          pipeID.NextID(),
-		parent:      parent,
-		c:           tc,
-		d:           d,
-		l:           l,
+		closedq:     make(chan struct{}),
+
+		id:     pipeID.NextID(),
+		parent: parent,
+		c:      tc,
+		d:      d,
+		l:      l,
 	}
 }
 
@@ -55,13 +55,12 @@ func (p *pipe) IsRaw() bool {
 }
 
 func (p *pipe) Close() {
-	p.Lock()
-	if p.closed {
-		p.Unlock()
+	select {
+	case <-p.closedq:
 		return
+	default:
+		close(p.closedq)
 	}
-	p.closed = true
-	p.Unlock()
 
 	p.c.Close()
 	p.parent.remPipe(p)
@@ -78,6 +77,13 @@ func (p *pipe) Send(msg []byte, extras ...[]byte) (err error) {
 }
 
 func (p *pipe) SendTimeout(timeout time.Duration, msg []byte, extras ...[]byte) (err error) {
+	select {
+	case <-p.closedq:
+		err = errs.ErrClosed
+		return
+	default:
+	}
+
 	if timeout <= 0 {
 		if err = p.c.Send(msg, extras...); err != nil {
 			// NOTE: close on any error
@@ -113,6 +119,13 @@ func (p *pipe) Recv() (msg []byte, err error) {
 }
 
 func (p *pipe) RecvTimeout(timeout time.Duration) (msg []byte, err error) {
+	select {
+	case <-p.closedq:
+		err = errs.ErrClosed
+		return
+	default:
+	}
+
 	if timeout <= 0 {
 		if msg, err = p.c.Recv(); err != nil {
 			// NOTE: close on any error
