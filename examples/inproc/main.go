@@ -12,6 +12,7 @@ import (
 	"github.com/webee/multisocket/examples"
 	"github.com/webee/multisocket/receiver"
 	"github.com/webee/multisocket/sender"
+	. "github.com/webee/multisocket/types"
 )
 
 func main() {
@@ -32,7 +33,7 @@ func main() {
 	examples.SetupSignal()
 }
 
-func produce(sock multisocket.Socket) {
+func produce(sock Socket) {
 	idx := 0
 	for {
 		content := []byte(fmt.Sprintf("msg#%d", idx))
@@ -45,7 +46,7 @@ func produce(sock multisocket.Socket) {
 	}
 }
 
-func consume(id int, sock multisocket.Socket) {
+func consume(id int, sock Socket) {
 	for {
 		content, err := sock.Recv()
 		if err != nil {

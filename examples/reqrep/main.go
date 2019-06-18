@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/signal"
 	"strconv"
-	"syscall"
 	"time"
+
+	"github.com/webee/multisocket/examples"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket/protocol/reqrep"
@@ -22,6 +22,7 @@ func init() {
 }
 
 func main() {
+	// client("dial", "tcp://127.0.0.1:30001", "webee")
 	if len(os.Args) > 3 && os.Args[1] == "rep" {
 		n, _ := strconv.Atoi(os.Args[4])
 		server(os.Args[2], os.Args[3], n)
@@ -50,7 +51,7 @@ func server(t, addr string, n int) {
 		}
 	}
 
-	setupSignal()
+	examples.SetupSignal()
 }
 
 func client(t, addr string, name string) {
@@ -86,20 +87,4 @@ func (h reqHandler) Handle(req []byte) (rep []byte) {
 	rep = []byte(fmt.Sprintf("[#%d]Hello, %s", int(h), string(req)))
 	time.Sleep(time.Millisecond * 10)
 	return
-}
-
-// setupSignal register signals handler and waiting for.
-func setupSignal() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	for {
-		s := <-c
-		log.WithField("signal", s.String()).Info("signal")
-		switch s {
-		case os.Interrupt, syscall.SIGTERM:
-			return
-		default:
-			return
-		}
-	}
 }

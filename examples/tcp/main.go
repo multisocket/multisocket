@@ -5,8 +5,8 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/signal"
-	"syscall"
+
+	"github.com/webee/multisocket/examples"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -72,45 +72,13 @@ func server(addr string) {
 		}
 		go handleConn(conn)
 	}
-	setupSignal()
+
+	examples.SetupSignal()
 }
 
 func handleConn(conn net.Conn) {
 	go io.Copy(conn, os.Stdin)
 	io.Copy(os.Stdout, conn)
 
-	// var (
-	// 	n   int
-	// 	err error
-	// )
-	// p := make([]byte, 32*1024)
-	// for {
-	// 	n, err = conn.Read(p)
-	// 	if n > 0 {
-	// 		msg := p[0:n]
-	// 		fmt.Fprintf(os.Stdout, "[%d]%s", len(msg), msg)
-	// 		if err != nil {
-	// 			break
-	// 		}
-	// 	}
-	// 	if err != nil {
-	// 		break
-	// 	}
-	// }
-}
-
-// setupSignal register signals handler and waiting for.
-func setupSignal() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	for {
-		s := <-c
-		log.WithField("signal", s.String()).Info("signal")
-		switch s {
-		case os.Interrupt, syscall.SIGTERM:
-			return
-		default:
-			return
-		}
-	}
+	conn.Close()
 }

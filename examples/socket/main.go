@@ -27,8 +27,12 @@ func init() {
 func main() {
 	// server("listen", "tcp://127.0.0.1:30001", "tcp://127.0.0.1:30002")
 	// client("tcp://127.0.0.1:30001", "webee")
-	if len(os.Args) > 4 && os.Args[1] == "server" {
-		server(os.Args[2], os.Args[3], os.Args[4])
+	if len(os.Args) > 3 && os.Args[1] == "server" {
+		rawAddr := ""
+		if len(os.Args) > 4 {
+			rawAddr = os.Args[4]
+		}
+		server(os.Args[2], os.Args[3], rawAddr)
 		os.Exit(0)
 	}
 	if len(os.Args) > 4 && os.Args[1] == "client" {
@@ -48,15 +52,19 @@ func server(t, addr, rawAddr string) {
 		if err := sock.Dial(addr); err != nil {
 			log.WithField("err", err).Panicf("dial")
 		}
-		if err := sock.DialOptions(rawAddr, options.OptionValues{transport.OptionConnRawMode: true}); err != nil {
-			log.WithField("err", err).Panicf("dial raw")
+		if rawAddr != "" {
+			if err := sock.DialOptions(rawAddr, options.OptionValues{transport.OptionConnRawMode: true}); err != nil {
+				log.WithField("err", err).Panicf("dial raw")
+			}
 		}
 	default:
 		if err := sock.Listen(addr); err != nil {
 			log.WithField("err", err).Panicf("listen")
 		}
-		if err := sock.ListenOptions(rawAddr, options.OptionValues{transport.OptionConnRawMode: true}); err != nil {
-			log.WithField("err", err).Panicf("listen raw")
+		if rawAddr != "" {
+			if err := sock.ListenOptions(rawAddr, options.OptionValues{transport.OptionConnRawMode: true}); err != nil {
+				log.WithField("err", err).Panicf("listen raw")
+			}
 		}
 	}
 

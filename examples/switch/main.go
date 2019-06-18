@@ -1,9 +1,8 @@
 package main
 
 import (
+	"github.com/webee/multisocket/examples"
 	"os"
-	"os/signal"
-	"syscall"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
@@ -50,7 +49,7 @@ func main() {
 
 	go forward(sockFront, sockBack)
 	go forward(sockBack, sockFront)
-	setupSignal()
+	examples.SetupSignal()
 }
 
 func forward(from multisocket.Socket, to multisocket.Socket) {
@@ -62,22 +61,6 @@ func forward(from multisocket.Socket, to multisocket.Socket) {
 
 		if err := to.SendMsg(msg); err != nil {
 			log.WithField("err", err).Errorf("forward")
-		}
-	}
-}
-
-// setupSignal register signals handler and waiting for.
-func setupSignal() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	for {
-		s := <-c
-		log.WithField("signal", s.String()).Info("signal")
-		switch s {
-		case os.Interrupt, syscall.SIGTERM:
-			return
-		default:
-			return
 		}
 	}
 }
