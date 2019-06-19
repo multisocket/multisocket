@@ -9,7 +9,6 @@ import (
 // rawConnection implements the raw Connection interface on top of net.Conn.
 type rawConnection struct {
 	connection
-	payload []byte
 }
 
 // Recv implements the TranPipe Recv method.
@@ -18,10 +17,12 @@ func (conn *rawConnection) Recv() (msg []byte, err error) {
 		n int
 	)
 
-	if n, err = conn.c.Read(conn.payload); n == 0 {
+	// TODO: using bytes pool
+	payload := make([]byte, conn.maxrx)
+	if n, err = conn.c.Read(payload); n == 0 {
 		return
 	}
-	msg = conn.payload[:n]
+	msg = payload[:n]
 	err = nil
 	return
 }
@@ -59,7 +60,6 @@ func newRawConnection(transport Transport, c PrimitiveConnection, opts options.O
 	}
 
 	conn.maxrx = OptionMaxRecvMsgSize.Value(opts.GetOptionDefault(OptionMaxRecvMsgSize, uint32(4*1024)))
-	conn.payload = make([]byte, conn.maxrx)
 
 	return conn, nil
 }

@@ -68,6 +68,7 @@ func (conn *connection) Recv() (msg []byte, err error) {
 		return
 	}
 
+	// TODO: using bytes pool
 	msg = make([]byte, sz)
 	if _, err = io.ReadFull(conn.c, msg); err != nil {
 		return
