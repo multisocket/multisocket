@@ -3,13 +3,13 @@ package main
 import (
 	"io"
 	"os"
-
-	"github.com/webee/multisocket/options"
-	"github.com/webee/multisocket/transport"
+	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/webee/multisocket/examples"
 	"github.com/webee/multisocket/protocol/stream"
 	_ "github.com/webee/multisocket/transport/all"
+	"github.com/webee/multisocket/utils/connutils"
 )
 
 func init() {
@@ -21,29 +21,62 @@ func init() {
 }
 
 func main() {
-	addr := os.Args[1]
-	// addr := "tcp://127.0.0.1:50001"
+	x := os.Args[1]
+	addrs := os.Args[2:]
 	protoStream := stream.New()
-	if err := protoStream.ListenOptions(addr, options.OptionValues{transport.OptionConnRawMode: true}); err != nil {
-		log.WithField("err", err).Panicf("listen")
+	for _, addr := range addrs {
+		sa := connutils.ParseSmartAddress(addr)
+		if err := sa.Connect(protoStream, nil); err != nil {
+			log.WithField("err", err).Panicf("connect")
+		}
 	}
 
-	var (
-		err    error
-		stream io.ReadWriteCloser
-	)
-	for {
-		if stream, err = protoStream.Accept(); err != nil {
-			log.WithField("err", err).Error("recv stream")
-			break
-		}
-		go handleStream(stream)
+	protoStream.SetOption(stream.OptionConnKeepAliveIdle, 10*time.Second)
+
+	if x == "server" {
+		server(protoStream)
+	} else {
+		client(protoStream)
 	}
 }
 
-func handleStream(stream io.ReadWriteCloser) {
-	go io.Copy(os.Stdout, stream)
-	io.Copy(stream, os.Stdin)
+func server(protoStream stream.Stream) {
+	var (
+		err  error
+		conn stream.Connection
+	)
+	mr := examples.NewMultiplexReader(os.Stdin)
+	for {
+		if conn, err = protoStream.Accept(); err != nil {
+			log.WithField("err", err).Error("accept")
+			break
+		}
+		xb, _ := mr.NewReader()
+		go func() {
+			handleConn(conn, xb, os.Stdout)
+			xb.Close()
+		}()
+	}
+}
 
-	stream.Close()
+func client(protoStream stream.Stream) {
+	var (
+		err  error
+		conn io.ReadWriteCloser
+	)
+	if conn, err = protoStream.Connect(0); err != nil {
+		log.WithField("err", err).Panic("connect")
+	}
+
+	handleConn(conn, os.Stdin, os.Stdout)
+}
+
+func handleConn(conn io.ReadWriteCloser, src io.Reader, dest io.Writer) {
+	go func() {
+		io.Copy(conn, src)
+		conn.Close()
+	}()
+
+	io.Copy(dest, conn)
+	conn.Close()
 }

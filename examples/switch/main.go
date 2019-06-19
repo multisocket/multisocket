@@ -1,12 +1,13 @@
 package main
 
 import (
-	"github.com/webee/multisocket/examples"
 	"os"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/examples"
 	_ "github.com/webee/multisocket/transport/all"
+	"github.com/webee/multisocket/utils/connutils"
 )
 
 func init() {
@@ -18,33 +19,17 @@ func init() {
 }
 
 func main() {
-	tFront := os.Args[1]
-	addrFront := os.Args[2]
-	tBack := os.Args[3]
-	addBack := os.Args[4]
-
-	sockFront := multisocket.NewDefault()
-	switch tFront {
-	case "dial":
-		if err := sockFront.Dial(addrFront); err != nil {
-			log.WithField("err", err).Panicf("dial")
-		}
-	default:
-		if err := sockFront.Listen(addrFront); err != nil {
-			log.WithField("err", err).Panicf("listen")
-		}
-	}
+	backAddr := os.Args[1]
+	frontAddr := os.Args[2]
 
 	sockBack := multisocket.NewDefault()
-	switch tBack {
-	case "dial":
-		if err := sockBack.Dial(addBack); err != nil {
-			log.WithField("err", err).Panicf("dial")
-		}
-	default:
-		if err := sockBack.Listen(addBack); err != nil {
-			log.WithField("err", err).Panicf("listen")
-		}
+	if err := connutils.ParseSmartAddress(backAddr).Connect(sockBack, nil); err != nil {
+		log.WithField("err", err).WithField("socket", "back").Panicf("connect")
+	}
+
+	sockFront := multisocket.NewDefault()
+	if err := connutils.ParseSmartAddress(frontAddr).Connect(sockFront, nil); err != nil {
+		log.WithField("err", err).WithField("socket", "front").Panicf("connect")
 	}
 
 	go forward(sockFront, sockBack)
