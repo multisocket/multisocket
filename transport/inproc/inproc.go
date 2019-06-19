@@ -22,6 +22,7 @@ type (
 		options.Options
 		addr    string
 		accepts chan chan *inprocConn
+		sync.Mutex
 		closedq chan struct{}
 	}
 
@@ -190,12 +191,15 @@ func (l *listener) Accept() (transport.Connection, error) {
 }
 
 func (l *listener) Close() error {
+	l.Lock()
 	select {
 	case <-l.closedq:
+		l.Unlock()
 		return errs.ErrClosed
 	default:
 		close(l.closedq)
 	}
+	l.Unlock()
 
 	listeners.Lock()
 	if listeners.byAddr[l.addr] == l {

@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"sync"
 	"time"
 
 	"github.com/webee/multisocket/errs"
@@ -14,6 +15,7 @@ type pipe struct {
 	sendTimeout time.Duration
 	recvTimeout time.Duration
 
+	sync.Mutex
 	closedq chan struct{}
 	id      uint32
 	parent  *connector
@@ -55,12 +57,15 @@ func (p *pipe) IsRaw() bool {
 }
 
 func (p *pipe) Close() {
+	p.Lock()
 	select {
 	case <-p.closedq:
+		p.Unlock()
 		return
 	default:
 		close(p.closedq)
 	}
+	p.Unlock()
 
 	p.c.Close()
 	p.parent.remPipe(p)

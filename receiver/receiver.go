@@ -15,16 +15,17 @@ type (
 	receiver struct {
 		options.Options
 		recvq   chan *Message
-		closedq chan struct{}
 
 		sync.Mutex
+		closedq chan struct{}
 		attachedConnectors map[Connector]struct{}
 		pipes              map[uint32]*pipe
 	}
 
 	pipe struct {
-		p       Pipe
+		sync.Mutex
 		closedq chan struct{}
+		p       Pipe
 	}
 )
 
@@ -191,21 +192,30 @@ func (r *receiver) addPipe(pipe Pipe) {
 
 func (r *receiver) remPipe(id uint32) {
 	r.Lock()
-	defer r.Unlock()
 	p, ok := r.pipes[id]
-	if ok {
-		delete(r.pipes, id)
-		p.close()
+	if !ok {
+		r.Unlock()
+		return
 	}
+	delete(r.pipes, id)
+	r.Unlock()
+
+	p.close()
+	return
 }
 
 func (p *pipe) close() {
+	p.Lock()
 	select {
 	case <-p.closedq:
+		p.Unlock()
+		return
 	default:
 		close(p.closedq)
-		p.p.Close()
 	}
+	p.Unlock()
+
+	p.p.Close()
 }
 
 func (r *receiver) run(p *pipe) {
@@ -316,13 +326,14 @@ func (r *receiver) Recv() (content []byte, err error) {
 }
 
 func (r *receiver) Close() {
+	r.Lock()
 	select {
 	case <-r.closedq:
+		r.Unlock()
 		return
 	default:
+		close(r.closedq)
 	}
-
-	r.Lock()
 	defer r.Unlock()
 
 	// unregister
@@ -330,6 +341,4 @@ func (r *receiver) Close() {
 		conns.UnregisterPipeEventHandler(r)
 		delete(r.attachedConnectors, conns)
 	}
-
-	close(r.closedq)
 }

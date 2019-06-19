@@ -37,6 +37,7 @@ type (
 	}
 
 	connection struct {
+		sync.Mutex
 		s       *stream
 		id      uint32
 		dest    [4]byte // id bytes
@@ -289,13 +290,17 @@ func (s *stream) Accept() (conn Connection, err error) {
 }
 
 func (s *stream) Close() error {
+	s.Lock()
 	select {
 	case <-s.closedq:
+		s.Unlock()
 		return errs.ErrClosed
 	default:
 		close(s.closedq)
-		return s.Socket.Close()
 	}
+	s.Unlock()
+
+	return s.Socket.Close()
 }
 
 func (s *stream) newConnection(id uint32, src message.MsgPath, raw bool) *connection {
@@ -453,6 +458,7 @@ RUNNING:
 					}
 				}
 			} else {
+				// log.Infof("reading: [%s]", msg.Content)
 				conn.reading(msg.Content)
 			}
 			// clear keepAliveAckTq, reset keepAliveTq
@@ -582,12 +588,15 @@ func (conn *connection) Write(p []byte) (n int, err error) {
 }
 
 func (conn *connection) Close() error {
+	conn.Lock()
 	select {
 	case <-conn.closedq:
+		conn.Unlock()
 		return errs.ErrClosed
 	default:
 		close(conn.closedq)
 	}
+	conn.Unlock()
 
 	s := conn.s
 	s.remConn(conn.id, conn.raw)

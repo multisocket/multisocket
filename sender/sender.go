@@ -16,14 +16,15 @@ type (
 	sender struct {
 		options.Options
 		sendq   chan *Message
-		closedq chan struct{}
 
 		sync.Mutex
+		closedq chan struct{}
 		attachedConnectors map[Connector]struct{}
 		pipes              map[uint32]*pipe
 	}
 
 	pipe struct {
+		sync.Mutex
 		p       Pipe
 		closedq chan struct{}
 		sendq   chan *Message
@@ -173,20 +174,25 @@ func (s *sender) remPipe(id uint32) {
 }
 
 func (p *pipe) close() {
+	p.Lock()
 	select {
 	case <-p.closedq:
+		p.Unlock()
+		return
 	default:
 		close(p.closedq)
-		p.p.Close()
-	DROP_MSG_LOOP:
-		for {
-			select {
-			case <-p.sendq:
-				// send some/all msgs, just drop
-				// TODO: maybe free msg bytes.
-			default:
-				break DROP_MSG_LOOP
-			}
+	}
+	p.Unlock()
+
+	p.p.Close()
+DROP_MSG_LOOP:
+	for {
+		select {
+		case <-p.sendq:
+			// send some/all msgs, just drop
+			// TODO: maybe free msg bytes.
+		default:
+			break DROP_MSG_LOOP
 		}
 	}
 }
@@ -327,13 +333,14 @@ func (s *sender) SendMsg(msg *Message) error {
 }
 
 func (s *sender) Close() {
+	s.Lock()
 	select {
 	case <-s.closedq:
+		s.Unlock()
 		return
 	default:
+		close(s.closedq)
 	}
-
-	s.Lock()
 	defer s.Unlock()
 
 	// unregister
@@ -341,6 +348,4 @@ func (s *sender) Close() {
 		conns.UnregisterPipeEventHandler(s)
 		delete(s.attachedConnectors, conns)
 	}
-
-	close(s.closedq)
 }

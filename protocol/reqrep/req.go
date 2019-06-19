@@ -18,9 +18,9 @@ type (
 	req struct {
 		multisocket.Socket
 		timeout time.Duration
-		closedq chan struct{}
 
 		sync.RWMutex
+		closedq chan struct{}
 		reqID    uint32
 		requests map[uint32]*Request
 	}
@@ -175,11 +175,15 @@ func (r *req) cancelRequest(requestID uint32) func() {
 }
 
 func (r *req) Close() error {
+	r.Lock()
 	select {
 	case <-r.closedq:
+		r.Unlock()
 		return errs.ErrClosed
 	default:
 		close(r.closedq)
 	}
+	r.Unlock()
+
 	return r.Socket.Close()
 }

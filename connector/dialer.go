@@ -90,12 +90,15 @@ func (d *dialer) Dial() error {
 }
 
 func (d *dialer) Close() error {
+	d.Lock()
 	select {
 	case <-d.closedq:
+		d.Unlock()
 		return errs.ErrClosed
 	default:
 		close(d.closedq)
 	}
+	d.Unlock()
 	return nil
 }
 
