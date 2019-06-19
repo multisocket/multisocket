@@ -62,7 +62,8 @@ func (l *listener) isStopped() bool {
 // serve spins in a loop, calling the accepter's Accept routine.
 func (l *listener) serve() {
 	if log.IsLevelEnabled(log.DebugLevel) {
-		log.WithFields(log.Fields{"addr": l.addr, "action": "start"}).Debug("accept")
+		raw := transport.OptionConnRawMode.Value(l.GetOptionDefault(transport.OptionConnRawMode, false))
+		log.WithFields(log.Fields{"addr": l.addr, "action": "start", "raw": raw}).Debug("accept")
 	}
 	for {
 		// If the underlying PipeListener is closed, or not
@@ -81,7 +82,8 @@ func (l *listener) serve() {
 		}
 	}
 	if log.IsLevelEnabled(log.DebugLevel) {
-		log.WithFields(log.Fields{"addr": l.addr, "action": "end"}).Debug("accept")
+		raw := transport.OptionConnRawMode.Value(l.GetOptionDefault(transport.OptionConnRawMode, false))
+		log.WithFields(log.Fields{"addr": l.addr, "action": "end", "raw": raw}).Debug("accept")
 	}
 }
 

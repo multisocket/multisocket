@@ -60,6 +60,8 @@ const (
 const (
 	// socket internal message, used by socket internal
 	MsgFlagInternal uint8 = 1 << (iota + 2)
+	// MsgFlagRaw is used to indicate the message is from a raw transport
+	MsgFlagRaw
 	// protocol control message, predefined flag, use by protocols implementations or others.
 	MsgFlagControl
 )
@@ -84,6 +86,11 @@ func (h *MsgHeader) HasFlags(flags uint8) bool {
 // HasAnyFlags check if header has any flags setted.
 func (h *MsgHeader) HasAnyFlags() bool {
 	return h.Flags&flagsMask != 0
+}
+
+// ClearFlags clear flags
+func (h *MsgHeader) ClearFlags(flags uint8) uint8 {
+	return h.Flags & (flags ^ 0xff)
 }
 
 // Size get Header byte size.

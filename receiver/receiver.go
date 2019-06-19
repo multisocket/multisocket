@@ -129,6 +129,15 @@ func (p *pipe) recvMsg() (msg *Message, err error) {
 	return
 }
 
+func newRawMsg(pipeID uint32, content []byte) *message.Message {
+	// raw message is always send to one.
+	msg := message.NewMessage(SendTypeToOne, nil, message.MsgFlagRaw, content)
+	// update source, add current pipe id
+	msg.Source = msg.Source.AddID(pipeID)
+	msg.Header.Hops = msg.Source.Length()
+	return msg
+}
+
 func (p *pipe) recvRawMsg() (msg *Message, err error) {
 	var (
 		payload []byte
@@ -137,9 +146,7 @@ func (p *pipe) recvRawMsg() (msg *Message, err error) {
 		return
 	}
 
-	msg = message.NewMessage(SendTypeToOne, nil, 0, payload)
-	msg.Source = msg.Source.AddID(p.p.ID())
-	msg.Header.Hops = msg.Source.Length()
+	msg = newRawMsg(p.p.ID(), payload)
 
 	return
 }
@@ -213,11 +220,8 @@ func (r *receiver) run(p *pipe) {
 		recvMsg = p.recvRawMsg
 
 		// NOTE:
-		// send a empty control to make a connection
-		msg := message.NewMessage(SendTypeToOne, nil, message.MsgFlagControl, nil)
-		// update source, add current pipe id
-		msg.Source = msg.Source.AddID(p.p.ID())
-		msg.Header.Hops = msg.Source.Length()
+		// send a empty message to make a connection
+		msg := newRawMsg(p.p.ID(), nil)
 
 		r.recvq <- msg
 	}

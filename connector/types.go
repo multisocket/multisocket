@@ -62,10 +62,8 @@ type (
 		Close() error
 	}
 
-	// ConnectorAction is connector's action
-	ConnectorAction interface {
-		SetNegotiator(Negotiator)
-
+	// ConnectorCoreAction is connector's core action
+	ConnectorCoreAction interface {
 		Dial(addr string) error
 		DialOptions(addr string, ovs options.OptionValues) error
 		NewDialer(addr string, ovs options.OptionValues) (Dialer, error)
@@ -75,6 +73,13 @@ type (
 		ListenOptions(addr string, ovs options.OptionValues) error
 		NewListener(addr string, ovs options.OptionValues) (Listener, error)
 		StopListen(addr string)
+	}
+
+	// ConnectorAction is connector's action
+	ConnectorAction interface {
+		SetNegotiator(Negotiator)
+
+		ConnectorCoreAction
 
 		GetPipe(id uint32) Pipe
 		ClosePipe(id uint32)

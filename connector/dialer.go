@@ -15,6 +15,7 @@ const (
 	defaultMinReconnTime = time.Millisecond * 100
 	defaultMaxReconnTime = time.Second * 8
 	defaultDialAsync     = false
+	defaultReconnect     = true
 )
 
 type dialer struct {
@@ -37,7 +38,8 @@ func newDialer(parent *connector, addr string, td transport.Dialer) *dialer {
 	opts := options.NewOptionsWithUpDownStreamsAndAccepts(nil, td,
 		DialerOptionMinReconnectTime,
 		DialerOptionMaxReconnectTime,
-		DialerOptionDialAsync)
+		DialerOptionDialAsync,
+		DialerOptionReconnect)
 	return &dialer{
 		Options: opts,
 		parent:  parent,
@@ -58,6 +60,10 @@ func (d *dialer) maxReconnectTime() time.Duration {
 
 func (d *dialer) dialAsync() bool {
 	return DialerOptionDialAsync.Value(d.GetOptionDefault(DialerOptionDialAsync, defaultDialAsync))
+}
+
+func (d *dialer) reconnect() bool {
+	return DialerOptionReconnect.Value(d.GetOptionDefault(DialerOptionReconnect, defaultReconnect))
 }
 
 func (d *dialer) Dial() error {
@@ -126,7 +132,12 @@ func (d *dialer) pipeClosed() {
 	select {
 	case <-d.closedq:
 	default:
-		time.AfterFunc(d.reconnTime, d.redial)
+		if d.reconnect() {
+			time.AfterFunc(d.reconnTime, d.redial)
+		} else {
+			// FIXME:
+			d.parent.remDialer(d)
+		}
 	}
 }
 
@@ -154,12 +165,14 @@ func (d *dialer) dial(redial bool) error {
 	d.Unlock()
 
 	if log.IsLevelEnabled(log.DebugLevel) {
-		log.WithFields(log.Fields{"addr": d.addr, "action": "start"}).Debug("dial")
+		raw := transport.OptionConnRawMode.Value(d.GetOptionDefault(transport.OptionConnRawMode, false))
+		log.WithFields(log.Fields{"addr": d.addr, "action": "start", "raw": raw}).Debug("dial")
 	}
 	tc, err := d.d.Dial()
 	if err == nil {
 		if log.IsLevelEnabled(log.DebugLevel) {
-			log.WithFields(log.Fields{"addr": d.addr, "action": "success"}).Debug("dial")
+			raw := transport.OptionConnRawMode.Value(d.GetOptionDefault(transport.OptionConnRawMode, false))
+			log.WithFields(log.Fields{"addr": d.addr, "action": "success", "raw": raw}).Debug("dial")
 		}
 		d.parent.addPipe(newPipe(d.parent, tc, d, nil))
 
@@ -171,7 +184,8 @@ func (d *dialer) dial(redial bool) error {
 		return nil
 	}
 	if log.IsLevelEnabled(log.DebugLevel) {
-		log.WithError(err).WithFields(log.Fields{"addr": d.addr, "action": "failed"}).Debug("dial")
+		raw := transport.OptionConnRawMode.Value(d.GetOptionDefault(transport.OptionConnRawMode, false))
+		log.WithError(err).WithFields(log.Fields{"addr": d.addr, "action": "failed", "raw": raw}).Debug("dial")
 	}
 
 	d.Lock()

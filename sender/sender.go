@@ -206,8 +206,11 @@ func (s *sender) run(p *pipe) {
 	}
 
 	sendMsg := p.sendMsg
+	sendq := s.sendq
 	if p.p.IsRaw() {
 		sendMsg = p.sendRawMsg
+		// raw pipe should not recv send to one messages.
+		sendq = nil
 	}
 
 	var (
@@ -222,8 +225,8 @@ SENDING:
 			break SENDING
 		case <-p.closedq:
 			break SENDING
-		case msg = <-s.sendq:
 		case msg = <-p.sendq:
+		case msg = <-sendq:
 		}
 		if msg.Header.TTL == 0 {
 			// drop msg
@@ -244,6 +247,10 @@ SENDING:
 }
 
 func (p *pipe) sendMsg(msg *Message) error {
+	if msg.Header.HasFlags(message.MsgFlagRaw) {
+		// ignore raw messages. raw message is only for stream, forward raw message makes no sense.
+		return nil
+	}
 	return p.p.Send(nil, msg.Encode()...)
 }
 

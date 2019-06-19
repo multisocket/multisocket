@@ -254,6 +254,12 @@ func (c *connector) NewDialer(addr string, ovs options.OptionValues) (d Dialer, 
 	return d, nil
 }
 
+func (c *connector) remDialer(d *dialer) {
+	c.Lock()
+	delete(c.dialers, d)
+	c.Unlock()
+}
+
 func (c *connector) StopDial(addr string) {
 	// NOTE: keep connected pipes
 	c.Lock()

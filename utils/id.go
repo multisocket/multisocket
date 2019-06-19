@@ -26,7 +26,8 @@ func (g *RecyclableIDGenerator) NextID() (id uint32) {
 	g.Lock()
 	defer g.Unlock()
 	for {
-		id = g.next
+		// leave 1 high bits zero
+		id = g.next & 0x7fffffff
 		g.next++
 		if id == 0 {
 			continue
