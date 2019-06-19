@@ -13,7 +13,7 @@ type (
 	// Stream is the Stream protocol
 	Stream interface {
 		options.Options
-		connector.ConnectorAction
+		connector.ConnectorCoreAction
 		Close() error
 
 		Connect(timeout time.Duration) (conn Connection, err error)
@@ -23,6 +23,7 @@ type (
 	// Connection is one stream connection between two peer
 	Connection interface {
 		io.ReadWriteCloser
+		Closed() bool
 	}
 )
 
@@ -30,4 +31,6 @@ type (
 const (
 	ControlMsgKeepAlive    string = ">"
 	ControlMsgKeepAliveAck string = "<"
+	ControlMsgStopWriting  string = "-w"
+	ControlMsgStartWriting string = "+w"
 )
