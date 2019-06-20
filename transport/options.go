@@ -8,11 +8,13 @@ type optionName int
 
 const (
 	optionNameMaxRecvMsgSize optionName = iota
+	optionNameRecvRawMsgBufSize
 	optionNameConnnRawMode
 )
 
 // Options
 var (
-	OptionMaxRecvMsgSize = options.NewUint32Option(optionNameMaxRecvMsgSize)
-	OptionConnRawMode    = options.NewBoolOption(optionNameConnnRawMode)
+	OptionMaxRecvMsgSize    = options.NewUint32Option(optionNameMaxRecvMsgSize)
+	OptionRecvRawMsgBufSize = options.NewUint32Option(optionNameRecvRawMsgBufSize)
+	OptionConnRawMode       = options.NewBoolOption(optionNameConnnRawMode)
 )

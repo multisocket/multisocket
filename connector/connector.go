@@ -49,7 +49,8 @@ func NewWithLimitAndOptions(limit int, ovs options.OptionValues) Connector {
 		pipes:             make(map[uint32]*pipe),
 		pipeEventHandlers: make(map[PipeEventHandler]struct{}),
 	}
-	c.Options = options.NewOptionsWithAccepts(OptionConnLimit, PipeOptionSendTimeout, PipeOptionRecvTimeout).SetOptionChangeHook(c.onOptionChange)
+	c.Options = options.NewOptionsWithAccepts(OptionConnLimit,
+		PipeOptionSendTimeout, PipeOptionRecvTimeout, PipeOptionCloseOnEOF).SetOptionChangeHook(c.onOptionChange)
 	for opt, val := range ovs {
 		c.SetOption(opt, val)
 	}
@@ -143,23 +144,23 @@ func (c *connector) addPipe(p *pipe) {
 					WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
 					WithField("action", "netotiating").
 					WithError(err).
-					Debug("add pipe")
+					Error("add pipe")
 			}
 			return
 		}
 	}
 
 	if c.limit == -1 || c.limit > len(c.pipes) {
+		c.pipes[p.ID()] = p
+		for peh := range c.pipeEventHandlers {
+			peh.HandlePipeEvent(PipeEventAdd, p)
+		}
+
 		if log.IsLevelEnabled(log.DebugLevel) {
 			log.WithField("domain", "connector").
 				WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
 				WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
 				Debug("add pipe")
-		}
-
-		c.pipes[p.ID()] = p
-		for peh := range c.pipeEventHandlers {
-			go peh.HandlePipeEvent(PipeEventAdd, p)
 		}
 
 		c.checkLimit(false)
@@ -179,13 +180,16 @@ func (c *connector) remPipe(p *pipe) {
 	c.Lock()
 	delete(c.pipes, p.ID())
 	for peh := range c.pipeEventHandlers {
-		go peh.HandlePipeEvent(PipeEventRemove, p)
+		peh.HandlePipeEvent(PipeEventRemove, p)
 	}
 	c.Unlock()
 
-	log.WithField("domain", "connector").
-		WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
-		Debug("remove pipe")
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "connector").
+			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
+			WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
+			Debug("remove pipe")
+	}
 
 	// If the pipe was from a dialer, inform it so that it can redial.
 	if d := p.d; d != nil {
@@ -193,8 +197,8 @@ func (c *connector) remPipe(p *pipe) {
 	}
 
 	c.Lock()
-	defer c.Unlock()
 	c.checkLimit(false)
+	c.Unlock()
 }
 
 func (c *connector) SetNegotiator(negotiator Negotiator) {

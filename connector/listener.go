@@ -23,7 +23,8 @@ type listener struct {
 }
 
 func newListener(parent *connector, addr string, tl transport.Listener) *listener {
-	opts := options.NewOptionsWithUpDownStreamsAndAccepts(tl, tl)
+	opts := options.NewOptionsWithUpDownStreamsAndAccepts(tl, tl,
+		PipeOptionSendTimeout, PipeOptionRecvTimeout, PipeOptionCloseOnEOF)
 	return &listener{
 		Options: opts,
 		parent:  parent,
@@ -74,7 +75,7 @@ func (l *listener) serve() {
 			if l.isStopped() {
 				tc.Close()
 			} else {
-				go l.parent.addPipe(newPipe(l.parent, tc, nil, l))
+				go l.parent.addPipe(newPipe(l.parent, tc, nil, l, l.Options))
 			}
 		} else {
 			// Debounce a little bit, to avoid thrashing the CPU.

@@ -15,19 +15,18 @@ import (
 type (
 	sender struct {
 		options.Options
-		sendq   chan *Message
+		sendq chan *Message
 
 		sync.Mutex
-		closedq chan struct{}
+		closedq            chan struct{}
 		attachedConnectors map[Connector]struct{}
 		pipes              map[uint32]*pipe
 	}
 
 	pipe struct {
-		sync.Mutex
-		p       Pipe
-		closedq chan struct{}
-		sendq   chan *Message
+		stopq chan struct{}
+		p     Pipe
+		sendq chan *Message
 	}
 )
 
@@ -68,12 +67,10 @@ func (s *sender) onOptionChange(opt options.Option, oldVal, newVal interface{}) 
 	}
 }
 
-func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan struct{}) (err error) {
+func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message) (err error) {
 	bestEffort := s.bestEffort()
 	if bestEffort {
 		select {
-		case <-closeq:
-			return errs.ErrClosed
 		case <-s.closedq:
 			return errs.ErrClosed
 		case sendq <- msg:
@@ -93,8 +90,6 @@ func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan st
 	}
 
 	select {
-	case <-closeq:
-		err = errs.ErrClosed
 	case <-s.closedq:
 		err = errs.ErrClosed
 	case sendq <- msg:
@@ -109,15 +104,15 @@ func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message, closeq <-chan st
 
 func (s *sender) pushMsgToPipes(msg *Message, pipes []*pipe) {
 	for _, p := range pipes {
-		s.doPushMsg(msg, p.sendq, p.closedq)
+		s.doPushMsg(msg, p.sendq)
 	}
 }
 
 func (s *sender) newPipe(p Pipe) *pipe {
 	return &pipe{
-		closedq: make(chan struct{}),
-		p:       p,
-		sendq:   make(chan *Message, s.sendQueueSize()),
+		stopq: make(chan struct{}),
+		p:     p,
+		sendq: make(chan *Message, s.sendQueueSize()),
 	}
 }
 
@@ -165,43 +160,39 @@ func (s *sender) addPipe(pipe Pipe) {
 
 func (s *sender) remPipe(id uint32) {
 	s.Lock()
-	defer s.Unlock()
 	p, ok := s.pipes[id]
-	if ok {
-		delete(s.pipes, id)
-		p.close()
+	if !ok {
+		s.Unlock()
+		return
 	}
+	delete(s.pipes, id)
+	s.Unlock()
+
+	p.stop()
 }
 
-func (p *pipe) close() {
-	p.Lock()
-	select {
-	case <-p.closedq:
-		p.Unlock()
-		return
-	default:
-		close(p.closedq)
-	}
-	p.Unlock()
-
-	p.p.Close()
-DROP_MSG_LOOP:
+func (p *pipe) stop() {
+	close(p.stopq)
+DRAIN_MSG_LOOP:
 	for {
 		select {
 		case <-p.sendq:
-			// send some/all msgs, just drop
+			// send to dest/all msgs, just drop
 			// TODO: maybe free msg bytes.
 		default:
-			break DROP_MSG_LOOP
+			break DRAIN_MSG_LOOP
 		}
 	}
 }
 
-func (s *sender) resendMsg(msg *Message) {
+func (s *sender) resendMsg(msg *Message) bool {
 	if msg.Header.SendType() == SendTypeToOne {
 		// only resend when send one, so we can choose another pipe to send.
-		s.SendMsg(msg)
+		if err := s.SendMsg(msg); err == nil {
+			return true
+		}
 	}
+	return false
 }
 
 func (s *sender) run(p *pipe) {
@@ -229,7 +220,7 @@ SENDING:
 		select {
 		case <-s.closedq:
 			break SENDING
-		case <-p.closedq:
+		case <-p.stopq:
 			break SENDING
 		case msg = <-p.sendq:
 		case msg = <-sendq:
@@ -240,10 +231,20 @@ SENDING:
 		}
 
 		if err = sendMsg(msg); err != nil {
-			s.resendMsg(msg)
+			if !s.resendMsg(msg) {
+				// TODO: maybe free msg bytes.
+			}
+
+			if log.IsLevelEnabled(log.DebugLevel) {
+				log.WithField("domain", "sender").
+					WithError(err).
+					WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
+					Error("sendMsg")
+			}
 			break SENDING
 		}
 	}
+	// seems can be moved to case <-s.closedq
 	s.remPipe(p.p.ID())
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "sender").
@@ -296,7 +297,7 @@ func (s *sender) sendTo(msg *Message) (err error) {
 		return
 	}
 
-	return s.doPushMsg(msg, p.sendq, p.closedq)
+	return s.doPushMsg(msg, p.sendq)
 }
 
 func (s *sender) SendTo(dest MsgPath, content []byte, extras ...[]byte) (err error) {
@@ -316,7 +317,7 @@ func (s *sender) SendMsg(msg *Message) error {
 	case SendTypeToDest:
 		return s.sendTo(msg)
 	case SendTypeToOne:
-		return s.doPushMsg(msg, s.sendq, nil)
+		return s.doPushMsg(msg, s.sendq)
 	case SendTypeToAll:
 		s.Lock()
 		pipes := make([]*pipe, len(s.pipes))

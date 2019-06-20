@@ -14,6 +14,7 @@ const (
 	dialerOptionNameReconnect
 	pipeOptionSendTimeout
 	pipeOptionRecvTimeout
+	pipeOptionCloseOnEOF
 )
 
 // Options
@@ -22,6 +23,7 @@ var (
 	OptionConnLimit       = options.NewIntOption(optionNameConnLimit)
 	PipeOptionSendTimeout = options.NewTimeDurationOption(pipeOptionSendTimeout)
 	PipeOptionRecvTimeout = options.NewTimeDurationOption(pipeOptionRecvTimeout)
+	PipeOptionCloseOnEOF  = options.NewBoolOption(pipeOptionCloseOnEOF)
 	// Dialer
 	DialerOptionMinReconnectTime = options.NewTimeDurationOption(dialerOptionNameMinReconnectTime)
 	DialerOptionMaxReconnectTime = options.NewTimeDurationOption(dialerOptionNameMaxReconnectTime)

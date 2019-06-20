@@ -59,7 +59,6 @@ func (conn *connection) Recv() (msg []byte, err error) {
 	var sz uint32
 
 	if err = binary.Read(conn.c, binary.BigEndian, &sz); err != nil {
-		err = errs.ErrBadMsg
 		return
 	}
 
@@ -68,7 +67,7 @@ func (conn *connection) Recv() (msg []byte, err error) {
 		return
 	}
 
-	// TODO: using bytes pool
+	// FIXME: bytes pool
 	msg = make([]byte, sz)
 	if _, err = io.ReadFull(conn.c, msg); err != nil {
 		return
@@ -130,6 +129,7 @@ func (conn *connection) RemoteAddress() string {
 	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.c.RemoteAddress())
 }
 
+// NewPrimitiveConn convert net.Conn to PrimitiveConnection
 func NewPrimitiveConn(c net.Conn) PrimitiveConnection {
 	return &primitiveConn{c}
 }

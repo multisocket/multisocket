@@ -14,18 +14,16 @@ import (
 type (
 	receiver struct {
 		options.Options
-		recvq   chan *Message
+		recvq chan *Message
 
 		sync.Mutex
-		closedq chan struct{}
+		closedq            chan struct{}
 		attachedConnectors map[Connector]struct{}
 		pipes              map[uint32]*pipe
 	}
 
 	pipe struct {
-		sync.Mutex
-		closedq chan struct{}
-		p       Pipe
+		p Pipe
 	}
 )
 
@@ -73,10 +71,7 @@ func (r *receiver) onOptionChange(opt options.Option, oldVal, newVal interface{}
 }
 
 func newPipe(p Pipe) *pipe {
-	return &pipe{
-		closedq: make(chan struct{}),
-		p:       p,
-	}
+	return &pipe{p}
 }
 
 func (p *pipe) recvMsg() (msg *Message, err error) {
@@ -192,30 +187,8 @@ func (r *receiver) addPipe(pipe Pipe) {
 
 func (r *receiver) remPipe(id uint32) {
 	r.Lock()
-	p, ok := r.pipes[id]
-	if !ok {
-		r.Unlock()
-		return
-	}
 	delete(r.pipes, id)
 	r.Unlock()
-
-	p.close()
-	return
-}
-
-func (p *pipe) close() {
-	p.Lock()
-	select {
-	case <-p.closedq:
-		p.Unlock()
-		return
-	default:
-		close(p.closedq)
-	}
-	p.Unlock()
-
-	p.p.Close()
 }
 
 func (r *receiver) run(p *pipe) {
@@ -248,9 +221,9 @@ RECVING:
 				log.WithField("domain", "receiver").
 					WithError(err).
 					WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
-					Debug("recvMsg")
+					Error("recvMsg")
 			}
-			break
+			break RECVING
 		}
 		if noRecv {
 			// just drop
@@ -263,21 +236,12 @@ RECVING:
 		}
 
 		if msg.Header.HasFlags(message.MsgFlagInternal) {
-			// ignore none internal messages.
 			// TODO: handle internal messages.
-			return
+			continue
 		}
 
 		select {
 		case <-r.closedq:
-			break RECVING
-		case <-p.closedq:
-			// try recv pipe's last msg
-			select {
-			case <-r.closedq:
-				break RECVING
-			case r.recvq <- msg:
-			}
 			break RECVING
 		case r.recvq <- msg:
 		}
@@ -334,11 +298,12 @@ func (r *receiver) Close() {
 	default:
 		close(r.closedq)
 	}
-	defer r.Unlock()
 
 	// unregister
 	for conns := range r.attachedConnectors {
 		conns.UnregisterPipeEventHandler(r)
 		delete(r.attachedConnectors, conns)
 	}
+
+	r.Unlock()
 }
