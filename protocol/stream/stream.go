@@ -1,7 +1,6 @@
 package stream
 
 import (
-	"bytes"
 	"encoding/binary"
 	"io"
 	"sync"
@@ -45,9 +44,8 @@ type (
 		recvq   chan *message.Message
 		src     message.MsgPath
 		raw     bool
-		rbuf    *bytes.Buffer
-		rq      chan struct{}
-		wq      chan struct{}
+		pr      *io.PipeReader
+		pw      *io.PipeWriter
 	}
 )
 
@@ -57,15 +55,9 @@ const (
 	defaultConnKeepAliveIdle     = 30 * time.Second
 	defaultConnKeepAliveInterval = 1 * time.Second
 	defaultConnKeepAliveProbes   = 7
-
-	// TODO: optionize this values
-	lowBufSize  = 4 * 1024
-	highBufSize = 256 * 1024
-	maxBufSize  = 1024 * 1024
 )
 
 var (
-	nilTq        <-chan time.Time
 	pipeStreamID = utils.NewRecyclableIDGenerator()
 )
 
@@ -153,7 +145,7 @@ RUNNING:
 			raw := msg.Header.HasFlags(message.MsgFlagRaw)
 			if raw {
 				// raw
-				id, _ = msg.Source.CurID()
+				id = msg.PipeID()
 				conn = s.getConn(id, raw)
 			} else {
 				id = pipeStreamID.NextID()
@@ -251,15 +243,17 @@ func (s *stream) Connect(timeout time.Duration) (conn Connection, err error) {
 		return
 	}
 
-	tq := nilTq
+	tm := utils.NewTimer()
 	if timeout > 0 {
-		tq = time.After(timeout)
+		tm.Reset(timeout)
 	}
 	select {
-	case <-tq:
+	case <-tm.C:
 		err = errs.ErrTimeout
 		return
 	case msg := <-c.recvq:
+		tm.Stop()
+
 		c.src = msg.Source
 		c.raw = msg.Header.HasFlags(message.MsgFlagRaw)
 		c.recvq <- msg
@@ -304,6 +298,7 @@ func (s *stream) Close() error {
 }
 
 func (s *stream) newConnection(id uint32, src message.MsgPath, raw bool) *connection {
+	pr, pw := io.Pipe()
 	conn := &connection{
 		s:       s,
 		id:      id,
@@ -312,12 +307,9 @@ func (s *stream) newConnection(id uint32, src message.MsgPath, raw bool) *connec
 		recvq:   make(chan *message.Message, s.streamRecvQueueSize),
 		src:     src,
 		raw:     raw,
-		rbuf:    new(bytes.Buffer),
-		rq:      make(chan struct{}),
-		wq:      make(chan struct{}, 1),
+		pr:      pr,
+		pw:      pw,
 	}
-	// for write
-	conn.wq <- struct{}{}
 	binary.BigEndian.PutUint32(conn.dest[:4], conn.id)
 	return conn
 }
@@ -342,9 +334,7 @@ func (conn *connection) sendKeepAlive() error {
 			Info(">keepAlive")
 	}
 
-	msg := message.NewMessage(message.SendTypeToDest, conn.src, message.MsgFlagControl, []byte(ControlMsgKeepAlive))
-	msg.AddSource(conn.dest)
-	return conn.s.SendMsg(msg)
+	return conn.sendMsg([]byte(ControlMsgKeepAlive), message.MsgFlagControl)
 }
 
 func (conn *connection) sendKeepAliveAck() error {
@@ -354,33 +344,7 @@ func (conn *connection) sendKeepAliveAck() error {
 			Info(">keepAliveAck")
 	}
 
-	msg := message.NewMessage(message.SendTypeToDest, conn.src, message.MsgFlagControl, []byte(ControlMsgKeepAliveAck))
-	msg.AddSource(conn.dest)
-	return conn.s.SendMsg(msg)
-}
-
-func (conn *connection) sendStopWriting() error {
-	if log.IsLevelEnabled(log.DebugLevel) {
-		log.WithField("domain", "stream").
-			WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
-			Info(">stopWriting")
-	}
-
-	msg := message.NewMessage(message.SendTypeToDest, conn.src, message.MsgFlagControl, []byte(ControlMsgStopWriting))
-	msg.AddSource(conn.dest)
-	return conn.s.SendMsg(msg)
-}
-
-func (conn *connection) sendStartWriting() error {
-	if log.IsLevelEnabled(log.DebugLevel) {
-		log.WithField("domain", "stream").
-			WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
-			Info(">startWriting")
-	}
-
-	msg := message.NewMessage(message.SendTypeToDest, conn.src, message.MsgFlagControl, []byte(ControlMsgStartWriting))
-	msg.AddSource(conn.dest)
-	return conn.s.SendMsg(msg)
+	return conn.sendMsg([]byte(ControlMsgKeepAliveAck), message.MsgFlagControl)
 }
 
 func (conn *connection) run() {
@@ -391,9 +355,9 @@ func (conn *connection) run() {
 	}
 
 	var (
-		msg            *message.Message
-		keepAliveTq    <-chan time.Time
-		keepAliveAckTq <-chan time.Time
+		msg               *message.Message
+		keepAliveTimer    = utils.NewTimer()
+		keepAliveAckTimer = utils.NewTimer()
 	)
 	keepAliveIdle := conn.s.connKeepAliveIdle()
 	keepAliveInterval := conn.s.connKeepAliveInterval()
@@ -402,9 +366,10 @@ func (conn *connection) run() {
 	}
 	keepAliveProbes := conn.s.connKeepAliveProbes()
 
-	keepAliveTq = time.After(keepAliveIdle)
+	if keepAliveIdle > 0 {
+		keepAliveTimer.Reset(keepAliveIdle)
+	}
 	probes := keepAliveProbes
-
 RUNNING:
 	for {
 		select {
@@ -429,26 +394,6 @@ RUNNING:
 							WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
 							Info("<keepAliveAck")
 					}
-				case ControlMsgStopWriting:
-					if log.IsLevelEnabled(log.DebugLevel) {
-						log.WithField("domain", "stream").
-							WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
-							Info("<stopWriting")
-					}
-					select {
-					case <-conn.wq:
-					default:
-					}
-				case ControlMsgStartWriting:
-					if log.IsLevelEnabled(log.DebugLevel) {
-						log.WithField("domain", "stream").
-							WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
-							Info("<startWriting")
-					}
-					select {
-					case conn.wq <- struct{}{}:
-					default:
-					}
 				default:
 					if log.IsLevelEnabled(log.DebugLevel) {
 						log.WithField("domain", "stream").
@@ -458,33 +403,40 @@ RUNNING:
 					}
 				}
 			} else {
-				// log.Infof("reading: [%s]", msg.Content)
-				conn.reading(msg.Content)
+				if len(msg.Content) > 0 {
+					// FIXME: send before read will block here.
+					conn.pw.Write(msg.Content)
+				}
 			}
-			// clear keepAliveAckTq, reset keepAliveTq
+			// clear keepAliveAckTimer, reset keepAliveTimer
 			probes = keepAliveProbes
-			keepAliveAckTq = nil
-			keepAliveTq = nil
+			keepAliveAckTimer.Stop()
 			if keepAliveIdle > 0 {
-				keepAliveTq = time.After(keepAliveIdle)
+				keepAliveTimer.Reset(keepAliveIdle)
+			} else {
+				keepAliveTimer.Stop()
 			}
-		case <-keepAliveTq:
+		case <-keepAliveTimer.C:
 			probes--
 			// time to send heartbeat
 			if err := conn.sendKeepAlive(); err != nil {
 				break RUNNING
 			}
 
-			// setup keepAliveAckTq, reset keepAliveTq
-			keepAliveAckTq = nil
+			// setup keepAliveAckTimer
 			if keepAliveInterval > 0 {
-				keepAliveAckTq = time.After(keepAliveInterval)
+				keepAliveAckTimer.Reset(keepAliveInterval)
+			} else {
+				keepAliveAckTimer.Stop()
+
+				// no check ack, so reset keepAliveTimer
+				if keepAliveIdle > 0 {
+					keepAliveTimer.Reset(keepAliveIdle)
+				} else {
+					keepAliveTimer.Stop()
+				}
 			}
-			keepAliveTq = nil
-			if keepAliveIdle > 0 {
-				keepAliveTq = time.After(keepAliveIdle)
-			}
-		case <-keepAliveAckTq:
+		case <-keepAliveAckTimer.C:
 			if log.IsLevelEnabled(log.DebugLevel) {
 				log.WithField("domain", "stream").
 					WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
@@ -499,9 +451,10 @@ RUNNING:
 				}
 
 				// setup keepAliveAckTq
-				keepAliveAckTq = nil
 				if keepAliveInterval > 0 {
-					keepAliveAckTq = time.After(keepAliveInterval)
+					keepAliveAckTimer.Reset(keepAliveInterval)
+				} else {
+					keepAliveAckTimer.Stop()
 				}
 			} else {
 				// recv heartbeat timeout
@@ -509,6 +462,8 @@ RUNNING:
 			}
 		}
 	}
+	keepAliveTimer.Stop()
+	keepAliveAckTimer.Stop()
 	conn.Close()
 
 	if log.IsLevelEnabled(log.DebugLevel) {
@@ -518,46 +473,8 @@ RUNNING:
 	}
 }
 
-func (conn *connection) reading(p []byte) {
-	sz := conn.rbuf.Len()
-	conn.rbuf.Write(p)
-	select {
-	case conn.rq <- struct{}{}:
-	default:
-	}
-	sz2 := conn.rbuf.Len()
-	if sz2 >= maxBufSize {
-		conn.Close()
-	} else if sz < highBufSize && sz2 >= highBufSize {
-		// notify stop writing
-		if err := conn.sendStopWriting(); err != nil {
-			conn.Close()
-		}
-	}
-}
-
 func (conn *connection) Read(p []byte) (n int, err error) {
-	for {
-		sz := conn.rbuf.Len()
-		n, err = conn.rbuf.Read(p)
-		if err == io.EOF {
-			select {
-			case <-conn.closedq:
-				err = io.EOF
-				return
-			case <-conn.rq:
-				continue
-			}
-		}
-
-		if sz > lowBufSize && conn.rbuf.Len() <= lowBufSize {
-			// notify start writing
-			if err := conn.sendStartWriting(); err != nil {
-				conn.Close()
-			}
-		}
-		return
-	}
+	return conn.pr.Read(p)
 }
 
 func (conn *connection) Write(p []byte) (n int, err error) {
@@ -565,8 +482,6 @@ func (conn *connection) Write(p []byte) (n int, err error) {
 	case <-conn.closedq:
 		err = errs.ErrClosed
 		return
-	case x := <-conn.wq:
-		conn.wq <- x
 	default:
 	}
 
@@ -577,13 +492,22 @@ func (conn *connection) Write(p []byte) (n int, err error) {
 
 	// NOTE: Writer must not retain p
 	content := append([]byte(nil), p...)
-	msg := message.NewMessage(message.SendTypeToDest, conn.src, 0, content)
-	msg.AddSource(conn.dest)
-	if err = conn.s.SendMsg(msg); err != nil {
+	if err = conn.sendMsg(content, 0); err != nil {
 		conn.Close()
 		return
 	}
 	n = len(content)
+	return
+}
+
+func (conn *connection) sendMsg(content []byte, flags uint8) (err error) {
+	msg := message.NewMessage(message.SendTypeToDest, conn.src, flags, content)
+	msg.AddSource(conn.dest)
+	err = conn.s.SendMsg(msg)
+	if log.IsLevelEnabled(log.DebugLevel) && err != nil {
+		log.WithField("domain", "stream").
+			WithError(err).Error("sendMsg")
+	}
 	return
 }
 
@@ -597,6 +521,9 @@ func (conn *connection) Close() error {
 		close(conn.closedq)
 	}
 	conn.Unlock()
+
+	conn.pr.Close()
+	conn.pw.Close()
 
 	s := conn.s
 	s.remConn(conn.id, conn.raw)

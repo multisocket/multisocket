@@ -31,6 +31,4 @@ type (
 const (
 	ControlMsgKeepAlive    string = ">"
 	ControlMsgKeepAliveAck string = "<"
-	ControlMsgStopWriting  string = "-w"
-	ControlMsgStartWriting string = "+w"
 )
