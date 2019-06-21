@@ -3,7 +3,6 @@ package receiver
 import (
 	"io"
 	"sync"
-	"time"
 
 	"github.com/webee/multisocket/errs"
 
@@ -34,14 +33,7 @@ const (
 
 var (
 	emptyByteSlice = make([]byte, 0)
-	nilQ           <-chan time.Time
-	closedQ        chan time.Time
 )
-
-func init() {
-	closedQ = make(chan time.Time)
-	close(closedQ)
-}
 
 // New create a receiver.
 func New() Receiver {
@@ -166,10 +158,6 @@ func (r *receiver) recvQueueSize() uint16 {
 	return OptionRecvQueueSize.Value(r.GetOptionDefault(OptionRecvQueueSize, defaultRecvQueueSize))
 }
 
-func (r *receiver) recvTimeout() time.Duration {
-	return OptionRecvTimeout.Value(r.GetOptionDefault(OptionRecvTimeout, time.Duration(0)))
-}
-
 func (r *receiver) noRecv() bool {
 	return OptionNoRecv.Value(r.GetOptionDefault(OptionNoRecv, false))
 }
@@ -264,26 +252,10 @@ RECVING:
 }
 
 func (r *receiver) RecvMsg() (msg *Message, err error) {
-	var (
-		timeoutTimer *time.Timer
-	)
-
-	recvTimeout := r.recvTimeout()
-	tq := nilQ
-	if recvTimeout > 0 {
-		timeoutTimer = time.NewTimer(recvTimeout)
-		tq = timeoutTimer.C
-	}
-
 	select {
 	case <-r.closedq:
 		err = errs.ErrClosed
-	case <-tq:
-		err = errs.ErrTimeout
 	case msg = <-r.recvq:
-	}
-	if timeoutTimer != nil {
-		timeoutTimer.Stop()
 	}
 	return
 }

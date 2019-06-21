@@ -2,7 +2,6 @@ package sender
 
 import (
 	"sync"
-	"time"
 
 	"github.com/webee/multisocket/errs"
 
@@ -33,10 +32,6 @@ type (
 const (
 	defaultMsgTTL        = message.DefaultMsgTTL
 	defaultSendQueueSize = uint16(64)
-)
-
-var (
-	nilQ <-chan time.Time
 )
 
 // New create a sender
@@ -81,23 +76,10 @@ func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message) (err error) {
 		}
 	}
 
-	var timeoutTimer *time.Timer
-	sendTimeout := s.sendTimeout()
-	tq := nilQ
-	if sendTimeout > 0 {
-		timeoutTimer = time.NewTimer(sendTimeout)
-		tq = timeoutTimer.C
-	}
-
 	select {
 	case <-s.closedq:
 		err = errs.ErrClosed
 	case sendq <- msg:
-	case <-tq:
-		err = errs.ErrTimeout
-	}
-	if timeoutTimer != nil {
-		timeoutTimer.Stop()
 	}
 	return
 }
@@ -135,10 +117,6 @@ func (s *sender) sendQueueSize() uint16 {
 
 func (s *sender) bestEffort() bool {
 	return OptionSendBestEffort.Value(s.GetOptionDefault(OptionSendBestEffort, false))
-}
-
-func (s *sender) sendTimeout() time.Duration {
-	return OptionSendTimeout.Value(s.GetOptionDefault(OptionSendTimeout, time.Duration(0)))
 }
 
 func (s *sender) HandlePipeEvent(e PipeEvent, pipe Pipe) {

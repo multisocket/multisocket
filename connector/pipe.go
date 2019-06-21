@@ -88,7 +88,7 @@ func (p *pipe) SendTimeout(timeout time.Duration, msg []byte, extras ...[]byte) 
 	if timeout <= 0 {
 		if err = p.c.Send(msg, extras...); err != nil {
 			// NOTE: close on any error
-			go p.Close()
+			p.Close()
 		}
 		return
 	}
@@ -97,15 +97,12 @@ func (p *pipe) SendTimeout(timeout time.Duration, msg []byte, extras ...[]byte) 
 	done := make(chan struct{})
 
 	go func() {
-		if err = p.c.Send(msg, extras...); err != nil {
-			// NOTE: close on any error
-			go p.Close()
-		}
+		err = p.SendTimeout(0, msg, extras...)
 		done <- struct{}{}
 	}()
 	select {
 	case <-tm.C:
-		go p.Close()
+		p.Close()
 		err = errs.ErrTimeout
 	case <-done:
 		tm.Stop()
@@ -124,11 +121,11 @@ func (p *pipe) RecvTimeout(timeout time.Duration) (msg []byte, err error) {
 				if len(msg) > 0 {
 					err = nil
 				} else if p.closeOnEOF {
-					go p.Close()
+					p.Close()
 					err = errs.ErrClosed
 				}
 			} else {
-				go p.Close()
+				p.Close()
 			}
 		}
 		return
@@ -137,18 +134,7 @@ func (p *pipe) RecvTimeout(timeout time.Duration) (msg []byte, err error) {
 	tm := time.NewTimer(timeout)
 	done := make(chan struct{})
 	go func() {
-		if msg, err = p.c.Recv(); err != nil {
-			if err == io.EOF {
-				if len(msg) > 0 {
-					err = nil
-				} else if p.closeOnEOF {
-					go p.Close()
-					err = errs.ErrClosed
-				}
-			} else {
-				go p.Close()
-			}
-		}
+		msg, err = p.RecvTimeout(0)
 		done <- struct{}{}
 	}()
 
