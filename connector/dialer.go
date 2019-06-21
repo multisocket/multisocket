@@ -135,9 +135,10 @@ func (d *dialer) pipeClosed() {
 	case <-d.closedq:
 	default:
 		if d.reconnect() {
-			time.AfterFunc(d.reconnTime, d.redial)
+			d.Lock()
+			d.redialer = time.AfterFunc(d.reconnTime, d.redial)
+			d.Unlock()
 		} else {
-			// FIXME:
 			d.parent.remDialer(d)
 		}
 	}
@@ -162,6 +163,7 @@ func (d *dialer) dial(redial bool) error {
 	}
 	if d.redialer != nil {
 		d.redialer.Stop()
+		d.redialer = nil
 	}
 	d.dialing = true
 	d.Unlock()

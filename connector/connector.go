@@ -262,6 +262,7 @@ func (c *connector) remDialer(d *dialer) {
 	c.Lock()
 	delete(c.dialers, d)
 	c.Unlock()
+	d.Close()
 }
 
 func (c *connector) StopDial(addr string) {

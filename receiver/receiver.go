@@ -1,6 +1,7 @@
 package receiver
 
 import (
+	"io"
 	"sync"
 	"time"
 
@@ -32,8 +33,9 @@ const (
 )
 
 var (
-	nilQ    <-chan time.Time
-	closedQ chan time.Time
+	emptyByteSlice = make([]byte, 0)
+	nilQ           <-chan time.Time
+	closedQ        chan time.Time
 )
 
 func init() {
@@ -139,6 +141,10 @@ func (p *pipe) recvRawMsg() (msg *Message, err error) {
 		payload []byte
 	)
 	if payload, err = p.p.Recv(); err != nil {
+		if err == io.EOF {
+			// nil content as EOF signal
+			msg = newRawMsg(p.p.ID(), nil)
+		}
 		return
 	}
 
@@ -204,7 +210,7 @@ func (r *receiver) run(p *pipe) {
 
 		// NOTE:
 		// send a empty message to make a connection
-		msg := newRawMsg(p.p.ID(), nil)
+		msg := newRawMsg(p.p.ID(), emptyByteSlice)
 
 		r.recvq <- msg
 	}
@@ -223,15 +229,17 @@ RECVING:
 					WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
 					Error("recvMsg")
 			}
+			if msg != nil {
+				select {
+				case <-r.closedq:
+					break RECVING
+				case r.recvq <- msg:
+				}
+			}
 			break RECVING
 		}
-		if noRecv {
-			// just drop
-			continue
-		}
-
-		if msg == nil {
-			// ignore nil msg
+		if noRecv || msg == nil {
+			// just drop or ignore nil msg
 			continue
 		}
 

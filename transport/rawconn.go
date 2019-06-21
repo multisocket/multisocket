@@ -46,8 +46,8 @@ func (conn *rawConnection) Send(msg []byte, extras ...[]byte) (err error) {
 		}
 	}
 
-	if _, err := buff.WriteTo(conn.c); err != nil {
-		return err
+	if _, err = buff.WriteTo(conn.c); err != nil {
+		return
 	}
 
 	return nil

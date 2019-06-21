@@ -1,9 +1,7 @@
 package connector
 
 import (
-	"fmt"
 	"io"
-	"os"
 	"sync"
 	"time"
 
@@ -122,13 +120,12 @@ func (p *pipe) Recv() (msg []byte, err error) {
 func (p *pipe) RecvTimeout(timeout time.Duration) (msg []byte, err error) {
 	if timeout <= 0 {
 		if msg, err = p.c.Recv(); err != nil {
-			// NOTE: close on any error except EOF
-			fmt.Fprintf(os.Stderr, "err: %s, %d\n", err, len(msg))
 			if err == io.EOF {
 				if len(msg) > 0 {
 					err = nil
 				} else if p.closeOnEOF {
 					go p.Close()
+					err = errs.ErrClosed
 				}
 			} else {
 				go p.Close()
@@ -141,12 +138,12 @@ func (p *pipe) RecvTimeout(timeout time.Duration) (msg []byte, err error) {
 	done := make(chan struct{})
 	go func() {
 		if msg, err = p.c.Recv(); err != nil {
-			// NOTE: close on any error
 			if err == io.EOF {
 				if len(msg) > 0 {
 					err = nil
 				} else if p.closeOnEOF {
 					go p.Close()
+					err = errs.ErrClosed
 				}
 			} else {
 				go p.Close()

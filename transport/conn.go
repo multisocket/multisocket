@@ -112,11 +112,12 @@ func (conn *connection) Send(msg []byte, extras ...[]byte) (err error) {
 // Close implements the Pipe Close method.
 func (conn *connection) Close() error {
 	conn.Lock()
-	defer conn.Unlock()
 	if conn.closed {
+		conn.Unlock()
 		return nil
 	}
 	conn.closed = true
+	conn.Unlock()
 
 	return conn.c.Close()
 }
