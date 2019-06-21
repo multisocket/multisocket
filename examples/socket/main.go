@@ -9,6 +9,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/examples"
 	"github.com/webee/multisocket/message"
 	"github.com/webee/multisocket/options"
@@ -53,7 +54,8 @@ func server(t, addr, rawAddr string) {
 			log.WithField("err", err).Panicf("dial")
 		}
 		if rawAddr != "" {
-			if err := sock.DialOptions(rawAddr, options.OptionValues{transport.OptionConnRawMode: true}); err != nil {
+			if err := sock.DialOptions(rawAddr,
+				options.OptionValues{transport.OptionConnRawMode: true, connector.PipeOptionCloseOnEOF: false}); err != nil {
 				log.WithField("err", err).Panicf("dial raw")
 			}
 		}
@@ -62,7 +64,8 @@ func server(t, addr, rawAddr string) {
 			log.WithField("err", err).Panicf("listen")
 		}
 		if rawAddr != "" {
-			if err := sock.ListenOptions(rawAddr, options.OptionValues{transport.OptionConnRawMode: true}); err != nil {
+			if err := sock.ListenOptions(rawAddr,
+				options.OptionValues{transport.OptionConnRawMode: true, connector.PipeOptionCloseOnEOF: false}); err != nil {
 				log.WithField("err", err).Panicf("listen raw")
 			}
 		}
@@ -79,11 +82,15 @@ func server(t, addr, rawAddr string) {
 				log.WithField("err", err).Errorf("recv")
 				continue
 			}
-
-			s := string(msg.Content)
-			content := []byte(fmt.Sprintf("[#%d]Hello, %s", n, s))
-			if err = sock.SendTo(msg.Source, content); err != nil {
-				log.WithField("err", err).Errorf("send")
+			if msg.Content == nil {
+				// EOF
+				sock.ClosePipe(msg.PipeID())
+			} else {
+				s := string(msg.Content)
+				content := []byte(fmt.Sprintf("[#%d]Hello, %s", n, s))
+				if err = sock.SendTo(msg.Source, content); err != nil {
+					log.WithField("err", err).Errorf("send")
+				}
 			}
 		}
 	}

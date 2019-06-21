@@ -19,3 +19,6 @@ examples/**/*
 # Editor
 .vscode
 *.swp
+
+# other
+null/

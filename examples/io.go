@@ -17,8 +17,9 @@ type (
 	}
 
 	xbuf struct {
-		mr      *MultiplexReader
+		sync.Mutex
 		closedq chan struct{}
+		mr      *MultiplexReader
 		ready   chan struct{}
 		buf     *bytes.Buffer
 	}
@@ -138,14 +139,18 @@ func (b *xbuf) Read(p []byte) (n int, err error) {
 }
 
 func (b *xbuf) Close() error {
+	b.Lock()
 	select {
 	case <-b.closedq:
+		b.Unlock()
 		return ErrClosed
 	default:
+		close(b.closedq)
 	}
+	b.Unlock()
+
 	b.mr.Lock()
 	delete(b.mr.bufs, b)
 	b.mr.Unlock()
-	close(b.closedq)
 	return nil
 }

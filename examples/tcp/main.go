@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"time"
 
 	"github.com/webee/multisocket/examples"
 
@@ -77,8 +78,19 @@ func server(addr string) {
 }
 
 func handleConn(conn net.Conn) {
-	go io.Copy(conn, os.Stdin)
-	io.Copy(os.Stdout, conn)
+	go func() {
+		// io.Copy(conn, os.Stdin)
+		for {
+			_, err := conn.Write([]byte("HELLO\n"))
+			if err != nil {
+				log.WithError(err).Info("[handle done write]")
+				break
+			}
+			time.Sleep(time.Second)
+		}
+	}()
+	_, err := io.Copy(os.Stdout, conn)
+	log.WithError(err).Info("[handle done read]")
 
-	conn.Close()
+	// conn.Close()
 }
