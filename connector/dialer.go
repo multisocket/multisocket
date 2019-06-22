@@ -103,44 +103,57 @@ func (d *dialer) Close() error {
 
 func (d *dialer) start() {
 	d.Lock()
-	defer d.Unlock()
 	if !d.stopped {
+		d.Unlock()
 		return
 	}
-
 	d.stopped = false
-	time.AfterFunc(d.reconnTime, d.redial)
+	d.Unlock()
+
+	d.reconn()
 }
 
 func (d *dialer) stop() {
 	d.Lock()
-	defer d.Unlock()
 	if d.stopped {
+		d.Unlock()
 		return
 	}
 
 	d.stopped = true
+	if d.redialer != nil {
+		d.redialer.Stop()
+	}
+	d.Unlock()
+}
+
+func (d *dialer) reconn() bool {
+	select {
+	case <-d.closedq:
+		return true
+	default:
+	}
+
+	if !d.reconnect() {
+		return false
+	}
+
+	d.Lock()
+	if d.redialer != nil {
+		d.redialer.Stop()
+	}
+	d.redialer = time.AfterFunc(d.reconnTime, d.redial)
+	d.Unlock()
+	return true
 }
 
 func (d *dialer) pipeClosed() {
-	// We always want to sleep a little bit after the pipe closed down,
-	// to avoid spinning hard.  This can happen if we connect, but the
-	// peer refuses to accept our protocol.  Injecting at least a little
-	// delay should help.
 	d.Lock()
 	d.connected = false
 	d.Unlock()
 
-	select {
-	case <-d.closedq:
-	default:
-		if d.reconnect() {
-			d.Lock()
-			d.redialer = time.AfterFunc(d.reconnTime, d.redial)
-			d.Unlock()
-		} else {
-			d.parent.remDialer(d)
-		}
+	if !d.reconn() {
+		d.parent.remDialer(d)
 	}
 }
 
