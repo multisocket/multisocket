@@ -11,13 +11,6 @@ import (
 	"github.com/webee/multisocket/transport"
 )
 
-const (
-	defaultMinReconnTime = time.Millisecond * 100
-	defaultMaxReconnTime = time.Second * 8
-	defaultDialAsync     = false
-	defaultReconnect     = true
-)
-
 type dialer struct {
 	options.Options
 	parent *connector
@@ -34,13 +27,9 @@ type dialer struct {
 	reconnTime time.Duration
 }
 
-func newDialer(parent *connector, addr string, td transport.Dialer) *dialer {
-	opts := options.NewOptionsWithUpDownStreamsAndAccepts(nil, td,
-		DialerOptionMinReconnectTime, DialerOptionMaxReconnectTime,
-		DialerOptionDialAsync, DialerOptionReconnect,
-		PipeOptionSendTimeout, PipeOptionRecvTimeout, PipeOptionCloseOnEOF)
+func newDialer(parent *connector, addr string, td transport.Dialer, ovs options.OptionValues) *dialer {
 	return &dialer{
-		Options: opts,
+		Options: options.NewOptionsWithValues(ovs),
 		parent:  parent,
 		addr:    addr,
 		d:       td,
@@ -50,19 +39,19 @@ func newDialer(parent *connector, addr string, td transport.Dialer) *dialer {
 
 //options
 func (d *dialer) minReconnectTime() time.Duration {
-	return DialerOptionMinReconnectTime.Value(d.GetOptionDefault(DialerOptionMinReconnectTime, defaultMinReconnTime))
+	return Options.Dialer.MinReconnectTime.ValueFrom(d)
 }
 
 func (d *dialer) maxReconnectTime() time.Duration {
-	return DialerOptionMaxReconnectTime.Value(d.GetOptionDefault(DialerOptionMaxReconnectTime, defaultMaxReconnTime))
+	return Options.Dialer.MaxReconnectTime.ValueFrom(d)
 }
 
 func (d *dialer) dialAsync() bool {
-	return DialerOptionDialAsync.Value(d.GetOptionDefault(DialerOptionDialAsync, defaultDialAsync))
+	return Options.Dialer.DialAsync.ValueFrom(d)
 }
 
 func (d *dialer) reconnect() bool {
-	return DialerOptionReconnect.Value(d.GetOptionDefault(DialerOptionReconnect, defaultReconnect))
+	return Options.Dialer.Reconnect.ValueFrom(d)
 }
 
 func (d *dialer) Dial() error {
@@ -182,13 +171,13 @@ func (d *dialer) dial(redial bool) error {
 	d.Unlock()
 
 	if log.IsLevelEnabled(log.DebugLevel) {
-		raw := transport.OptionConnRawMode.Value(d.GetOptionDefault(transport.OptionConnRawMode, false))
+		raw := transport.Options.RawMode.ValueFrom(d.Options)
 		log.WithFields(log.Fields{"addr": d.addr, "action": "start", "raw": raw}).Debug("dial")
 	}
-	tc, err := d.d.Dial()
+	tc, err := d.d.Dial(d.Options)
 	if err == nil {
 		if log.IsLevelEnabled(log.DebugLevel) {
-			raw := transport.OptionConnRawMode.Value(d.GetOptionDefault(transport.OptionConnRawMode, false))
+			raw := transport.Options.RawMode.ValueFrom(d.Options)
 			log.WithFields(log.Fields{"addr": d.addr, "action": "success", "raw": raw}).Debug("dial")
 		}
 		d.parent.addPipe(newPipe(d.parent, tc, d, nil, d.Options))
@@ -201,7 +190,7 @@ func (d *dialer) dial(redial bool) error {
 		return nil
 	}
 	if log.IsLevelEnabled(log.DebugLevel) {
-		raw := transport.OptionConnRawMode.Value(d.GetOptionDefault(transport.OptionConnRawMode, false))
+		raw := transport.Options.RawMode.ValueFrom(d.Options)
 		log.WithError(err).WithFields(log.Fields{"addr": d.addr, "action": "failed", "raw": raw}).Error("dial")
 	}
 

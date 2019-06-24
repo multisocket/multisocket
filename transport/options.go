@@ -4,17 +4,25 @@ import (
 	"github.com/webee/multisocket/options"
 )
 
-type optionName int
-
-const (
-	optionNameMaxRecvMsgSize optionName = iota
-	optionNameRecvRawMsgBufSize
-	optionNameConnnRawMode
+type (
+	transportOptions struct {
+		MaxRecvMsgSize options.Uint32Option
+		RawRecvBufSize options.Uint32Option
+		RawMode        options.BoolOption
+	}
 )
 
-// Options
 var (
-	OptionMaxRecvMsgSize    = options.NewUint32Option(optionNameMaxRecvMsgSize)
-	OptionRecvRawMsgBufSize = options.NewUint32Option(optionNameRecvRawMsgBufSize)
-	OptionConnRawMode       = options.NewBoolOption(optionNameConnnRawMode)
+	// OptionDomains is option's domain
+	OptionDomains = []string{"transport"}
+	// Options for transport
+	Options = transportOptions{
+		MaxRecvMsgSize: options.NewUint32Option(uint32(32 * 1024)), // 0 for no limit
+		RawRecvBufSize: options.NewUint32Option(uint32(4 * 1024)),
+		RawMode:        options.NewBoolOption(false),
+	}
 )
+
+func init() {
+	options.RegisterStructuredOptions(Options, OptionDomains)
+}

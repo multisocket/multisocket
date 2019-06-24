@@ -29,11 +29,6 @@ type (
 	}
 )
 
-const (
-	defaultMsgTTL        = message.DefaultMsgTTL
-	defaultSendQueueSize = uint16(64)
-)
-
 // New create a sender
 func New() Sender {
 	return NewWithOptions(nil)
@@ -51,13 +46,13 @@ func NewWithOptions(ovs options.OptionValues) Sender {
 		s.SetOption(opt, val)
 	}
 	// default
-	s.Options.SetOptionIfNotExists(OptionSendQueueSize, defaultSendQueueSize)
+	s.onOptionChange(Options.SendQueueSize, nil, nil)
 	return s
 }
 
 func (s *sender) onOptionChange(opt options.Option, oldVal, newVal interface{}) {
 	switch opt {
-	case OptionSendQueueSize:
+	case Options.SendQueueSize:
 		s.sendq = make(chan *Message, s.sendQueueSize())
 	}
 }
@@ -108,15 +103,15 @@ func (s *sender) AttachConnector(connector Connector) {
 
 // options
 func (s *sender) ttl() uint8 {
-	return OptionTTL.Value(s.GetOptionDefault(OptionTTL, defaultMsgTTL))
+	return Options.TTL.ValueFrom(s.Options)
 }
 
 func (s *sender) sendQueueSize() uint16 {
-	return OptionSendQueueSize.Value(s.GetOptionDefault(OptionSendQueueSize, defaultSendQueueSize))
+	return Options.SendQueueSize.ValueFrom(s.Options)
 }
 
 func (s *sender) bestEffort() bool {
-	return OptionSendBestEffort.Value(s.GetOptionDefault(OptionSendBestEffort, false))
+	return Options.SendBestEffort.ValueFrom(s.Options)
 }
 
 func (s *sender) HandlePipeEvent(e PipeEvent, pipe Pipe) {

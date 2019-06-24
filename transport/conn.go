@@ -136,8 +136,8 @@ func NewPrimitiveConn(c net.Conn) PrimitiveConnection {
 }
 
 // NewConnection allocates a new Connection using the supplied net.Conn
-func NewConnection(transport Transport, pc PrimitiveConnection, opts options.Options) (Connection, error) {
-	if OptionConnRawMode.Value(opts.GetOptionDefault(OptionConnRawMode, false)) {
+func NewConnection(opts options.Options, transport Transport, pc PrimitiveConnection) (Connection, error) {
+	if Options.RawMode.ValueFrom(opts) {
 		return newRawConnection(transport, pc, opts)
 	}
 
@@ -147,9 +147,7 @@ func NewConnection(transport Transport, pc PrimitiveConnection, opts options.Opt
 		c:         pc,
 	}
 
-	if val, ok := opts.GetOption(OptionMaxRecvMsgSize); ok {
-		conn.maxrx = OptionMaxRecvMsgSize.Value(val)
-	}
+	conn.maxrx = Options.MaxRecvMsgSize.ValueFrom(opts)
 
 	return conn, nil
 }

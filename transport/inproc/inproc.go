@@ -5,21 +5,20 @@ import (
 	"io"
 	"sync"
 
-	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/options"
+
+	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/transport"
 )
 
 type (
-	inprocTran int
+	inprocTran string
 
 	dialer struct {
-		options.Options
 		addr string
 	}
 
 	listener struct {
-		options.Options
 		addr    string
 		accepts chan chan *inprocConn
 		sync.Mutex
@@ -38,8 +37,7 @@ type (
 
 const (
 	// Transport is a transport.Transport for intra-process communication.
-	Transport = inprocTran(0)
-	scheme    = "inproc"
+	Transport = inprocTran("inproc")
 
 	defaultAcceptQueueSize = 8
 )
@@ -74,22 +72,16 @@ func (p *inprocConn) Close() error {
 }
 
 func (p *inprocConn) LocalAddress() string {
-	return fmt.Sprintf("%s://%s", scheme, p.laddr)
+	return fmt.Sprintf("%s://%s", Transport.Scheme(), p.laddr)
 }
 
 func (p *inprocConn) RemoteAddress() string {
-	return fmt.Sprintf("%s://%s", scheme, p.raddr)
-}
-
-func newDefaultOptions() options.Options {
-	// default options
-	return options.NewOptions().
-		WithOption(transport.OptionMaxRecvMsgSize, 4*1024*1024)
+	return fmt.Sprintf("%s://%s", Transport.Scheme(), p.raddr)
 }
 
 // dialer
 
-func (d *dialer) Dial() (transport.Connection, error) {
+func (d *dialer) Dial(opts options.Options) (transport.Connection, error) {
 	var (
 		l  *listener
 		ok bool
@@ -113,13 +105,13 @@ func (d *dialer) Dial() (transport.Connection, error) {
 	case <-l.closedq:
 		return nil, transport.ErrConnRefused
 	case dc := <-ac:
-		return transport.NewConnection(Transport, dc, d.Options)
+		return transport.NewConnection(opts, Transport, dc)
 	}
 }
 
 // listener
 
-func (l *listener) Listen() error {
+func (l *listener) Listen(opts options.Options) error {
 	select {
 	case <-l.closedq:
 		return errs.ErrClosed
@@ -143,7 +135,7 @@ func (l *listener) Listen() error {
 	return nil
 }
 
-func (l *listener) Accept() (transport.Connection, error) {
+func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
 	select {
 	case <-l.closedq:
 		return nil, errs.ErrClosed
@@ -186,7 +178,7 @@ func (l *listener) Accept() (transport.Connection, error) {
 		case ac <- dc:
 		}
 
-		return transport.NewConnection(Transport, lc, l.Options)
+		return transport.NewConnection(opts, Transport, lc)
 	}
 }
 
@@ -212,8 +204,8 @@ func (l *listener) Close() error {
 
 // inprocTran
 
-func (inprocTran) Scheme() string {
-	return scheme
+func (t inprocTran) Scheme() string {
+	return string(t)
 }
 
 func (t inprocTran) NewDialer(addr string) (transport.Dialer, error) {
@@ -222,7 +214,7 @@ func (t inprocTran) NewDialer(addr string) (transport.Dialer, error) {
 		return nil, err
 	}
 
-	d := &dialer{Options: newDefaultOptions(), addr: addr}
+	d := &dialer{addr: addr}
 	return d, nil
 }
 
@@ -233,7 +225,6 @@ func (t inprocTran) NewListener(addr string) (transport.Listener, error) {
 	}
 
 	l := &listener{
-		Options: newDefaultOptions(),
 		addr:    addr,
 		closedq: make(chan struct{}),
 	}

@@ -11,10 +11,6 @@ type rawConnection struct {
 	connection
 }
 
-const (
-	defaultMsgBufSize uint32 = 4 * 1024
-)
-
 // Recv implements the TranPipe Recv method.
 func (conn *rawConnection) Recv() (msg []byte, err error) {
 	var (
@@ -63,7 +59,7 @@ func newRawConnection(transport Transport, c PrimitiveConnection, opts options.O
 		},
 	}
 
-	conn.maxrx = OptionRecvRawMsgBufSize.Value(opts.GetOptionDefault(OptionRecvRawMsgBufSize, defaultMsgBufSize))
+	conn.maxrx = Options.RawRecvBufSize.ValueFrom(opts)
 
 	return conn, nil
 }

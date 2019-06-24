@@ -2,7 +2,11 @@ package options
 
 import (
 	"errors"
+	"fmt"
 	"math"
+	"reflect"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -13,18 +17,18 @@ type (
 	// Options is option set.
 	Options interface {
 		SetOption(opt Option, val interface{}) (err error)
-		WithOption(opt Option, val interface{}) Options
 		SetOptionIfNotExists(opt Option, val interface{}) (err error)
 		GetOption(opt Option) (val interface{}, ok bool)
-		GetOptionDefault(opt Option, def interface{}) (val interface{})
 		OptionValues() OptionValues
 		SetOptionChangeHook(hook OptionChangeHook) Options
 	}
 
 	// Option is an option item.
 	Option interface {
-		Name() interface{}
+		String() string
+		DefaultValue() interface{}
 		Validate(val interface{}) (newVal interface{}, err error)
+		Parse(s string) (val interface{}, err error)
 	}
 
 	// OptionValues is option/value map
@@ -34,19 +38,19 @@ type (
 		sync.RWMutex
 		opts             map[Option]interface{}
 		accepts          map[Option]bool
-		upstream         Options
 		downstream       Options
 		optionChangeHook OptionChangeHook
 	}
 
 	baseOption struct {
-		name interface{}
+		defaultValue interface{}
 	}
 
 	// BoolOption is option with bool value.
 	BoolOption interface {
 		Option
 		Value(val interface{}) bool
+		ValueFrom(optss ...Options) bool
 	}
 
 	boolOption struct {
@@ -57,6 +61,7 @@ type (
 	StringOption interface {
 		Option
 		Value(val interface{}) string
+		ValueFrom(optss ...Options) string
 	}
 
 	stringOption struct {
@@ -67,6 +72,7 @@ type (
 	TimeDurationOption interface {
 		Option
 		Value(val interface{}) time.Duration
+		ValueFrom(optss ...Options) time.Duration
 	}
 
 	timeDurationOption struct {
@@ -77,6 +83,7 @@ type (
 	IntOption interface {
 		Option
 		Value(val interface{}) int
+		ValueFrom(optss ...Options) int
 	}
 
 	intOption struct {
@@ -87,6 +94,7 @@ type (
 	Uint8Option interface {
 		Option
 		Value(val interface{}) uint8
+		ValueFrom(optss ...Options) uint8
 	}
 
 	uint8Option struct {
@@ -97,6 +105,7 @@ type (
 	Uint16Option interface {
 		Option
 		Value(val interface{}) uint16
+		ValueFrom(optss ...Options) uint16
 	}
 
 	uint16Option struct {
@@ -107,6 +116,7 @@ type (
 	Uint32Option interface {
 		Option
 		Value(val interface{}) uint32
+		ValueFrom(optss ...Options) uint32
 	}
 
 	uint32Option struct {
@@ -117,6 +127,7 @@ type (
 	Int32Option interface {
 		Option
 		Value(val interface{}) int32
+		ValueFrom(optss ...Options) int32
 	}
 
 	int32Option struct {
@@ -128,7 +139,76 @@ type (
 var (
 	ErrInvalidOptionValue = errors.New("invalid option value")
 	ErrUnsupportedOption  = errors.New("unsupported option")
+	ErrOptionNotFound     = errors.New("option not found")
 )
+
+var (
+	lock              sync.RWMutex
+	registeredOptions = map[string]interface{}{}
+	optionFullNames   = map[Option]string{}
+)
+
+// RegisterOption register option
+func RegisterOption(opt Option, name string, domains []string) {
+	lock.Lock()
+	cur := registeredOptions
+	for _, d := range domains {
+		d = strings.ToLower(d)
+		m := cur[d]
+		if m == nil {
+			m = make(map[string]interface{})
+			cur[d] = m
+		}
+		cur = m.(map[string]interface{})
+	}
+	cur[strings.ToLower(name)] = opt
+	optionFullNames[opt] = strings.Join(append(domains, name), ".")
+	lock.Unlock()
+}
+
+// RegisterStructuredOptions register structured options
+func RegisterStructuredOptions(opts interface{}, domains []string) {
+	v := reflect.ValueOf(opts)
+	for i := 0; i < v.NumField(); i++ {
+		f := v.Type().Field(i)
+		fv := v.Field(i).Interface()
+		if opt, ok := fv.(Option); ok {
+			// option
+			RegisterOption(opt, f.Name, domains)
+		} else {
+			// structured options
+			RegisterStructuredOptions(fv, append(domains, f.Name))
+		}
+	}
+}
+
+// ParseOption parse Option from string.
+func ParseOption(s string) (opt Option, err error) {
+	domains := strings.Split(s, ".")
+	l := len(domains)
+	name := strings.ToLower(domains[l-1])
+	domains = domains[:l-1]
+
+	lock.Lock()
+	var ok bool
+	cur := registeredOptions
+	for _, d := range domains {
+		d = strings.ToLower(d)
+		m := cur[d]
+		if m == nil {
+			return nil, fmt.Errorf("%s: %s", ErrOptionNotFound, s)
+		}
+		if cur, ok = m.(map[string]interface{}); !ok {
+			return nil, fmt.Errorf("%s: %s", ErrOptionNotFound, s)
+		}
+	}
+
+	if opt, ok = cur[name].(Option); !ok {
+		return nil, fmt.Errorf("%s: %s", ErrOptionNotFound, s)
+	}
+	lock.Unlock()
+	return
+}
 
 // NewOptions create an option set.
 func NewOptions() Options {
@@ -146,11 +226,10 @@ func NewOptionsWithValues(ovs OptionValues) Options {
 	return opts
 }
 
-// NewOptionsWithUpDownStreamsAndAccepts create an option set with up/down streams and accepts.
-func NewOptionsWithUpDownStreamsAndAccepts(upstream, downstream Options, accepts ...Option) Options {
+// NewOptionsWithDownStreamsAndAccepts create an option set with down stream and accepts.
+func NewOptionsWithDownStreamsAndAccepts(downstream Options, accepts ...Option) Options {
 	options := &options{
 		opts:       make(map[Option]interface{}),
-		upstream:   upstream,
 		downstream: downstream,
 		accepts:    make(map[Option]bool),
 	}
@@ -164,7 +243,7 @@ func NewOptionsWithUpDownStreamsAndAccepts(upstream, downstream Options, accepts
 
 // NewOptionsWithAccepts create an option set with accepts.
 func NewOptionsWithAccepts(accepts ...Option) Options {
-	return NewOptionsWithUpDownStreamsAndAccepts(nil, nil, accepts...)
+	return NewOptionsWithDownStreamsAndAccepts(nil, accepts...)
 }
 
 func (opts *options) acceptOption(opt Option) bool {
@@ -211,12 +290,6 @@ func (opts *options) doSetOption(opt Option, val interface{}) {
 	}
 }
 
-// WithOption set an option value.
-func (opts *options) WithOption(opt Option, val interface{}) Options {
-	opts.SetOption(opt, val)
-	return opts
-}
-
 func (opts *options) SetOptionIfNotExists(opt Option, val interface{}) (err error) {
 	if val, err = opt.Validate(val); err != nil {
 		return
@@ -247,20 +320,11 @@ func (opts *options) GetOption(opt Option) (val interface{}, ok bool) {
 		defer opts.RUnlock()
 		val, ok = opts.opts[opt]
 		return
-	} else if opts.upstream != nil {
-		// pass to upstream
-		return opts.upstream.GetOption(opt)
+	} else if opts.downstream != nil {
+		// pass to downstream
+		return opts.downstream.GetOption(opt)
 	}
 
-	return
-}
-
-// GetOptionDefault get an option value with default.
-func (opts *options) GetOptionDefault(opt Option, def interface{}) (val interface{}) {
-	var ok bool
-	if val, ok = opts.GetOption(opt); !ok {
-		val = def
-	}
 	return
 }
 
@@ -275,13 +339,27 @@ func (opts *options) OptionValues() (res OptionValues) {
 	return
 }
 
-func (o *baseOption) Name() interface{} {
-	return o.name
+func (o *baseOption) String() string {
+	return fmt.Sprintf("<%T:%v>", o.defaultValue, o.defaultValue)
+}
+
+func (o *baseOption) DefaultValue() interface{} {
+	return o.defaultValue
+}
+
+// valueFrom get opt from optss else return default value
+func valueFrom(opt Option, optss ...Options) interface{} {
+	for _, opts := range optss {
+		if val, ok := opts.GetOption(opt); ok {
+			return val
+		}
+	}
+	return opt.DefaultValue()
 }
 
 // NewBoolOption create a bool option
-func NewBoolOption(name interface{}) BoolOption {
-	return &boolOption{baseOption{name}}
+func NewBoolOption(val bool) BoolOption {
+	return &boolOption{baseOption{val}}
 }
 
 // Validate validate the option value
@@ -294,14 +372,30 @@ func (o *boolOption) Validate(val interface{}) (newVal interface{}, err error) {
 	return
 }
 
+func (o *boolOption) Parse(s string) (val interface{}, err error) {
+	s = strings.ToLower(s)
+	switch s {
+	case "", "true", "t", "1":
+		return true, nil
+	case "false", "f", "0":
+		return false, nil
+	default:
+		return nil, fmt.Errorf("%s: %s=>%s", ErrInvalidOptionValue, optionFullNames[o], s)
+	}
+}
+
 // Value get option's value, must ensure option value is not empty
 func (o *boolOption) Value(val interface{}) bool {
 	return val.(bool)
 }
 
+func (o *boolOption) ValueFrom(optss ...Options) bool {
+	return valueFrom(o, optss...).(bool)
+}
+
 // NewStringOption create a string option
-func NewStringOption(name interface{}) StringOption {
-	return &stringOption{baseOption{name}}
+func NewStringOption(val string) StringOption {
+	return &stringOption{baseOption{val}}
 }
 
 // Validate validate the option value
@@ -314,13 +408,21 @@ func (o *stringOption) Validate(val interface{}) (newVal interface{}, err error)
 	return
 }
 
+func (o *stringOption) Parse(s string) (val interface{}, err error) {
+	return s, nil
+}
+
 // Value get option's value, must ensure option value is not empty
 func (o *stringOption) Value(val interface{}) string {
 	return val.(string)
 }
 
+func (o *stringOption) ValueFrom(optss ...Options) string {
+	return valueFrom(o, optss...).(string)
+}
+
 // NewTimeDurationOption create a time duration option
-func NewTimeDurationOption(name interface{}) TimeDurationOption {
+func NewTimeDurationOption(name time.Duration) TimeDurationOption {
 	return &timeDurationOption{baseOption{name}}
 }
 
@@ -334,23 +436,44 @@ func (o *timeDurationOption) Validate(val interface{}) (newVal interface{}, err 
 	return
 }
 
+func (o *timeDurationOption) Parse(s string) (val interface{}, err error) {
+	if val, err = time.ParseDuration(s); err != nil {
+		err = fmt.Errorf("%s: %s=>%s", ErrInvalidOptionValue, optionFullNames[o], s)
+	}
+	return
+}
+
 // Value get option's value, must ensure option value is not empty
 func (o *timeDurationOption) Value(val interface{}) time.Duration {
 	return val.(time.Duration)
 }
 
+func (o *timeDurationOption) ValueFrom(optss ...Options) time.Duration {
+	return valueFrom(o, optss...).(time.Duration)
+}
+
 // NewIntOption create an int option
-func NewIntOption(name interface{}) IntOption {
-	return &intOption{baseOption{name}}
+func NewIntOption(val int) IntOption {
+	return &intOption{baseOption{val}}
 }
 
 // Validate validate the option value
 func (o *intOption) Validate(val interface{}) (newVal interface{}, err error) {
-	if _, ok := val.(int); !ok {
+	switch x := val.(type) {
+	case int:
+		newVal = x
+	case int64:
+		newVal = int(x)
+	default:
 		err = ErrInvalidOptionValue
-		return
 	}
-	newVal = val
+	return
+}
+
+func (o *intOption) Parse(s string) (val interface{}, err error) {
+	if val, err = strconv.ParseInt(s, 10, 0); err != nil {
+		err = fmt.Errorf("%s: %s=>%s", ErrInvalidOptionValue, optionFullNames[o], s)
+	}
 	return
 }
 
@@ -359,9 +482,13 @@ func (o *intOption) Value(val interface{}) int {
 	return val.(int)
 }
 
+func (o *intOption) ValueFrom(optss ...Options) int {
+	return valueFrom(o, optss...).(int)
+}
+
 // NewUint8Option create an uint8 option
-func NewUint8Option(name interface{}) Uint8Option {
-	return &uint8Option{baseOption{name}}
+func NewUint8Option(val uint8) Uint8Option {
+	return &uint8Option{baseOption{val}}
 }
 
 // Validate validate the option value
@@ -375,8 +502,21 @@ func (o *uint8Option) Validate(val interface{}) (newVal interface{}, err error) 
 			break
 		}
 		err = ErrInvalidOptionValue
+	case uint64:
+		if x >= 0 && x <= math.MaxUint8 {
+			newVal = uint8(x)
+			break
+		}
+		err = ErrInvalidOptionValue
 	default:
 		err = ErrInvalidOptionValue
+	}
+	return
+}
+
+func (o *uint8Option) Parse(s string) (val interface{}, err error) {
+	if val, err = strconv.ParseUint(s, 10, 8); err != nil {
+		err = fmt.Errorf("%s: %s=>%s", ErrInvalidOptionValue, optionFullNames[o], s)
 	}
 	return
 }
@@ -386,9 +526,13 @@ func (o *uint8Option) Value(val interface{}) uint8 {
 	return val.(uint8)
 }
 
+func (o *uint8Option) ValueFrom(optss ...Options) uint8 {
+	return valueFrom(o, optss...).(uint8)
+}
+
 // NewUint16Option create an uint16 option
-func NewUint16Option(name interface{}) Uint16Option {
-	return &uint16Option{baseOption{name}}
+func NewUint16Option(val uint16) Uint16Option {
+	return &uint16Option{baseOption{val}}
 }
 
 // Validate validate the option value
@@ -402,8 +546,21 @@ func (o *uint16Option) Validate(val interface{}) (newVal interface{}, err error)
 			break
 		}
 		err = ErrInvalidOptionValue
+	case uint64:
+		if x >= 0 && x <= math.MaxUint16 {
+			newVal = uint16(x)
+			break
+		}
+		err = ErrInvalidOptionValue
 	default:
 		err = ErrInvalidOptionValue
+	}
+	return
+}
+
+func (o *uint16Option) Parse(s string) (val interface{}, err error) {
+	if val, err = strconv.ParseUint(s, 10, 16); err != nil {
+		err = fmt.Errorf("%s: %s=>%s", ErrInvalidOptionValue, optionFullNames[o], s)
 	}
 	return
 }
@@ -413,9 +570,13 @@ func (o *uint16Option) Value(val interface{}) uint16 {
 	return val.(uint16)
 }
 
+func (o *uint16Option) ValueFrom(optss ...Options) uint16 {
+	return valueFrom(o, optss...).(uint16)
+}
+
 // NewUint32Option create an uint32 option
-func NewUint32Option(name interface{}) Uint32Option {
-	return &uint32Option{baseOption{name}}
+func NewUint32Option(val uint32) Uint32Option {
+	return &uint32Option{baseOption{val}}
 }
 
 // Validate validate the option value
@@ -429,8 +590,21 @@ func (o *uint32Option) Validate(val interface{}) (newVal interface{}, err error)
 			break
 		}
 		err = ErrInvalidOptionValue
+	case uint64:
+		if x >= 0 && x <= math.MaxUint64 {
+			newVal = uint32(x)
+			break
+		}
+		err = ErrInvalidOptionValue
 	default:
 		err = ErrInvalidOptionValue
+	}
+	return
+}
+
+func (o *uint32Option) Parse(s string) (val interface{}, err error) {
+	if val, err = strconv.ParseUint(s, 10, 32); err != nil {
+		err = fmt.Errorf("%s: %s=>%s", ErrInvalidOptionValue, optionFullNames[o], s)
 	}
 	return
 }
@@ -440,9 +614,13 @@ func (o *uint32Option) Value(val interface{}) uint32 {
 	return val.(uint32)
 }
 
+func (o *uint32Option) ValueFrom(optss ...Options) uint32 {
+	return valueFrom(o, optss...).(uint32)
+}
+
 // NewInt32Option create an int32 option
-func NewInt32Option(name interface{}) Int32Option {
-	return &int32Option{baseOption{name}}
+func NewInt32Option(val int32) Int32Option {
+	return &int32Option{baseOption{val}}
 }
 
 // Validate validate the option value
@@ -456,8 +634,21 @@ func (o *int32Option) Validate(val interface{}) (newVal interface{}, err error) 
 			break
 		}
 		err = ErrInvalidOptionValue
+	case int64:
+		if x >= math.MinInt32 && x <= math.MaxInt32 {
+			newVal = int32(x)
+			break
+		}
+		err = ErrInvalidOptionValue
 	default:
 		err = ErrInvalidOptionValue
+	}
+	return
+}
+
+func (o *int32Option) Parse(s string) (val interface{}, err error) {
+	if val, err = strconv.ParseInt(s, 10, 32); err != nil {
+		err = fmt.Errorf("%s: %s=>%s", ErrInvalidOptionValue, optionFullNames[o], s)
 	}
 	return
 }
@@ -465,4 +656,8 @@ func (o *int32Option) Validate(val interface{}) (newVal interface{}, err error) 
 // Value get option's value, must ensure option value is not empty
 func (o *int32Option) Value(val interface{}) int32 {
 	return val.(int32)
+}
+
+func (o *int32Option) ValueFrom(optss ...Options) int32 {
+	return valueFrom(o, optss...).(int32)
 }

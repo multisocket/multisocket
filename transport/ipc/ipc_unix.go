@@ -14,28 +14,24 @@ import (
 
 type (
 	dialer struct {
-		options.Options
-
 		addr *net.UnixAddr
 	}
 
 	listener struct {
-		options.Options
-
 		addr     *net.UnixAddr
 		listener *net.UnixListener
 	}
 )
 
-func (d *dialer) Dial() (_ transport.Connection, err error) {
+func (d *dialer) Dial(opts options.Options) (_ transport.Connection, err error) {
 	conn, err := net.DialUnix("unix", nil, d.addr)
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewConnection(Transport, transport.NewPrimitiveConn(conn), d.Options)
+	return transport.NewConnection(opts, Transport, transport.NewPrimitiveConn(conn))
 }
 
-func (l *listener) Listen() error {
+func (l *listener) Listen(opts options.Options) error {
 	// remove exists socket file
 	path := l.addr.String()
 	if stat, err := os.Stat(path); err == nil {
@@ -58,7 +54,7 @@ func (l *listener) Listen() error {
 	return nil
 }
 
-func (l *listener) Accept() (transport.Connection, error) {
+func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
 	if l.listener == nil {
 		return nil, errs.ErrBadOperateState
 	}
@@ -67,7 +63,7 @@ func (l *listener) Accept() (transport.Connection, error) {
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewConnection(Transport, transport.NewPrimitiveConn(conn), l.Options)
+	return transport.NewConnection(opts, Transport, transport.NewPrimitiveConn(conn))
 }
 
 // Close implements the PipeListener Close method.
@@ -93,8 +89,7 @@ func (t ipcTran) NewDialer(address string) (transport.Dialer, error) {
 	}
 
 	d := &dialer{
-		Options: options.NewOptions(),
-		addr:    addr,
+		addr: addr,
 	}
 	return d, nil
 }
@@ -115,8 +110,7 @@ func (t ipcTran) NewListener(address string) (transport.Listener, error) {
 	}
 
 	l := &listener{
-		Options: options.NewOptions(),
-		addr:    addr,
+		addr: addr,
 	}
 
 	return l, nil

@@ -1,20 +1,32 @@
 package tcp
 
 import (
+	"time"
+
+	"github.com/webee/multisocket/transport"
+
 	"github.com/webee/multisocket/options"
 )
 
-type optionName int
-
-const (
-	optionNameNoDelay optionName = iota
-	optionNameKeeyAlive
-	optionNameKeepAliveTime
+type (
+	tcpOptions struct {
+		NoDelay         options.BoolOption
+		KeepAlive       options.BoolOption
+		KeepAlivePeriod options.TimeDurationOption
+	}
 )
 
-// Options
 var (
-	OptionNoDelay       = options.NewBoolOption(optionNameNoDelay)
-	OptionKeepAlive     = options.NewBoolOption(optionNameKeeyAlive)
-	OptionKeepAliveTime = options.NewTimeDurationOption(optionNameKeepAliveTime)
+	// OptionDomains is option's domain
+	OptionDomains = append(transport.OptionDomains, "tcp")
+	// Options for tcp
+	Options = tcpOptions{
+		NoDelay:         options.NewBoolOption(true),
+		KeepAlive:       options.NewBoolOption(true),
+		KeepAlivePeriod: options.NewTimeDurationOption(time.Duration(0)),
+	}
 )
+
+func init() {
+	options.RegisterStructuredOptions(Options, OptionDomains)
+}

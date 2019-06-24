@@ -20,7 +20,7 @@ type (
 		Recv() ([]byte, error)
 		RecvTimeout(deadline time.Duration) ([]byte, error)
 
-		Close()
+		Close() error
 	}
 )
 

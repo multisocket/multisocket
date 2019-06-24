@@ -5,13 +5,12 @@ import (
 )
 
 type (
-	ipcTran int
+	ipcTran string
 )
 
 const (
 	// Transport is a transport.Transport for IPC.
-	Transport = ipcTran(0)
-	scheme    = "ipc"
+	Transport = ipcTran("ipc")
 )
 
 func init() {
@@ -19,6 +18,6 @@ func init() {
 }
 
 // Scheme implements the Transport Scheme method.
-func (ipcTran) Scheme() string {
-	return scheme
+func (t ipcTran) Scheme() string {
+	return string(t)
 }

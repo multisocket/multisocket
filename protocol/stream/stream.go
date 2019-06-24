@@ -49,14 +49,6 @@ type (
 	}
 )
 
-const (
-	defaultConnQueueSize         = 16
-	defaultConnRecvQueueSize     = 64
-	defaultConnKeepAliveIdle     = 30 * time.Second
-	defaultConnKeepAliveInterval = 1 * time.Second
-	defaultConnKeepAliveProbes   = 7
-)
-
 var (
 	pipeStreamID = utils.NewRecyclableIDGenerator()
 )
@@ -69,9 +61,9 @@ func New() Stream {
 // NewWithOptions create a Stream protocol instance with options
 func NewWithOptions(ovs options.OptionValues) Stream {
 	opts := options.NewOptionsWithValues(ovs)
-	streamQueueSize := OptionStreamQueueSize.Value(opts.GetOptionDefault(OptionStreamQueueSize, defaultConnQueueSize))
-	streamRecvQueueSize := OptionConnRecvQueueSize.Value(opts.GetOptionDefault(OptionConnRecvQueueSize, defaultConnRecvQueueSize))
-	acceptable := OptionAcceptable.Value(opts.GetOptionDefault(OptionAcceptable, true))
+	streamQueueSize := Options.StreamQueueSize.ValueFrom(opts)
+	streamRecvQueueSize := Options.ConnRecvQueueSize.ValueFrom(opts)
+	acceptable := Options.Acceptable.ValueFrom(opts)
 	s := &stream{
 		Options:             opts,
 		Socket:              multisocket.New(connector.New(), sender.New(), receiver.New()),
@@ -89,15 +81,15 @@ func NewWithOptions(ovs options.OptionValues) Stream {
 
 // options
 func (s *stream) connKeepAliveIdle() time.Duration {
-	return OptionConnKeepAliveIdle.Value(s.GetOptionDefault(OptionConnKeepAliveIdle, defaultConnKeepAliveIdle))
+	return Options.ConnKeepAliveIdle.ValueFrom(s.Options)
 }
 
 func (s *stream) connKeepAliveInterval() time.Duration {
-	return OptionConnKeepAliveInterval.Value(s.GetOptionDefault(OptionConnKeepAliveInterval, defaultConnKeepAliveInterval))
+	return Options.ConnKeepAliveInterval.ValueFrom(s.Options)
 }
 
 func (s *stream) connKeepAliveProbes() int {
-	return OptionConnKeepAliveProbes.Value(s.GetOptionDefault(OptionConnKeepAliveProbes, defaultConnKeepAliveProbes))
+	return Options.ConnKeepAliveProbes.ValueFrom(s.Options)
 }
 
 func (s *stream) run() {

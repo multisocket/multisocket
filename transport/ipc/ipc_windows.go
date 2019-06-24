@@ -13,28 +13,24 @@ import (
 
 type (
 	dialer struct {
-		options.Options
-
 		path string
 	}
 
 	listener struct {
-		options.Options
-
 		path     string
 		listener net.Listener
 	}
 )
 
-func (d *dialer) Dial() (transport.Pipe, error) {
+func (d *dialer) Dial(opts options.Options) (transport.Pipe, error) {
 	conn, err := winio.DialPipe("\\\\.\\pipe\\"+d.path, nil)
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewConnection(Transport, conn, d.Options)
+	return transport.NewConnection(opts, Transport, transport.NewPrimitiveConn(conn))
 }
 
-func (l *listener) Listen() error {
+func (l *listener) Listen(opts options.Options) error {
 	// remove exists named pipe file
 	path := l.addr.String()
 	if stat, err := os.Stat(path); err == nil {
@@ -50,9 +46,9 @@ func (l *listener) Listen() error {
 	}
 
 	config := &winio.PipeConfig{
-		InputBufferSize:    ListenerOptionInputBufferSize.Value(),
-		OutputBufferSize:   ListenerOptionOutputBufferSize(),
-		SecurityDescriptor: ListenerOptionSecurityDescriptor.Value()
+		InputBufferSize:    Options.Listener.InputBufferSize.ValueFrom(opts),
+		OutputBufferSize:   Options.Listener.OutputBufferSize.ValueFrom(opts),
+		SecurityDescriptor: Options.Listener.SecurityDescriptor.ValueFrom(opts),
 		MessageMode:        false,
 	}
 
@@ -64,7 +60,7 @@ func (l *listener) Listen() error {
 	return nil
 }
 
-func (l *listener) Accept() (mangos.TranPipe, error) {
+func (l *listener) Accept(opts options.Options) (mangos.TranPipe, error) {
 	if l.listener == nil {
 		return nil, errs.ErrBadOperateState
 	}
@@ -73,7 +69,7 @@ func (l *listener) Accept() (mangos.TranPipe, error) {
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewConnPipeIPC(conn, l.proto, l.opts)
+	return transport.NewConnection(opts, Transport, transport.NewPrimitiveConn(conn))
 }
 
 func (l *listener) Close() error {
@@ -89,10 +85,7 @@ func (t ipcTran) NewDialer(address string) (transport.Dialer, error) {
 		return nil, err
 	}
 
-	d := &dialer{
-		Options: options.NewOptions(),
-		path:    address,
-	}
+	d := &dialer{path:    address }
 
 	return d, nil
 }
@@ -104,15 +97,7 @@ func (t ipcTran) NewListener(address string) (transport.Listener, error) {
 		return nil, err
 	}
 
-	l := &listener{
-		Options: options.NewOptions(),
-		path:    address,
-	}
-
-	// derfault options
-	l.SetOption(ListenerOptionInputBufferSize, int32(4096))
-	l.SetOption(ListenerOptionOutputBufferSize, int32(4096))
-	l.SetOption(ListenerOptionSecurityDescriptor, "")
+	l := &listener{ path:    address}
 
 	return l, nil
 }

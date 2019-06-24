@@ -27,10 +27,6 @@ type (
 	}
 )
 
-const (
-	defaultRecvQueueSize = uint16(64)
-)
-
 var (
 	emptyByteSlice = make([]byte, 0)
 )
@@ -52,14 +48,14 @@ func NewWithOptions(ovs options.OptionValues) Receiver {
 		r.SetOption(opt, val)
 	}
 	// default
-	r.Options.SetOptionIfNotExists(OptionRecvQueueSize, defaultRecvQueueSize)
+	r.onOptionChange(Options.RecvQueueSize, nil, nil)
 
 	return r
 }
 
 func (r *receiver) onOptionChange(opt options.Option, oldVal, newVal interface{}) {
 	switch opt {
-	case OptionRecvQueueSize:
+	case Options.RecvQueueSize:
 		r.recvq = make(chan *Message, r.recvQueueSize())
 	}
 }
@@ -155,11 +151,11 @@ func (r *receiver) AttachConnector(connector Connector) {
 
 // options
 func (r *receiver) recvQueueSize() uint16 {
-	return OptionRecvQueueSize.Value(r.GetOptionDefault(OptionRecvQueueSize, defaultRecvQueueSize))
+	return Options.RecvQueueSize.ValueFrom(r.Options)
 }
 
 func (r *receiver) noRecv() bool {
-	return OptionNoRecv.Value(r.GetOptionDefault(OptionNoRecv, false))
+	return Options.NoRecv.ValueFrom(r.Options)
 }
 
 func (r *receiver) HandlePipeEvent(e PipeEvent, pipe Pipe) {

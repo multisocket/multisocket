@@ -21,17 +21,13 @@ type (
 
 	// Dialer is dialer
 	Dialer interface {
-		options.Options
-
-		Dial() (Connection, error)
+		Dial(opts options.Options) (Connection, error)
 	}
 
 	// Listener is listener
 	Listener interface {
-		options.Options
-
-		Listen() error
-		Accept() (Connection, error)
+		Listen(opts options.Options) error
+		Accept(opts options.Options) (Connection, error)
 		Close() error
 	}
 

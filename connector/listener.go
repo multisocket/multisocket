@@ -22,11 +22,9 @@ type listener struct {
 	stopped bool
 }
 
-func newListener(parent *connector, addr string, tl transport.Listener) *listener {
-	opts := options.NewOptionsWithUpDownStreamsAndAccepts(tl, tl,
-		PipeOptionSendTimeout, PipeOptionRecvTimeout, PipeOptionCloseOnEOF)
+func newListener(parent *connector, addr string, tl transport.Listener, ovs options.OptionValues) *listener {
 	return &listener{
-		Options: opts,
+		Options: options.NewOptionsWithValues(ovs),
 		parent:  parent,
 		addr:    addr,
 		l:       tl,
@@ -63,13 +61,13 @@ func (l *listener) isStopped() bool {
 // serve spins in a loop, calling the accepter's Accept routine.
 func (l *listener) serve() {
 	if log.IsLevelEnabled(log.DebugLevel) {
-		raw := transport.OptionConnRawMode.Value(l.GetOptionDefault(transport.OptionConnRawMode, false))
+		raw := transport.Options.RawMode.ValueFrom(l.Options)
 		log.WithFields(log.Fields{"addr": l.addr, "action": "start", "raw": raw}).Debug("accept")
 	}
 	for {
 		// If the underlying PipeListener is closed, or not
 		// listening, we expect to return back with an error.
-		if tc, err := l.l.Accept(); err == errs.ErrClosed {
+		if tc, err := l.l.Accept(l.Options); err == errs.ErrClosed {
 			break
 		} else if err == nil {
 			if l.isStopped() {
@@ -83,13 +81,13 @@ func (l *listener) serve() {
 		}
 	}
 	if log.IsLevelEnabled(log.DebugLevel) {
-		raw := transport.OptionConnRawMode.Value(l.GetOptionDefault(transport.OptionConnRawMode, false))
+		raw := transport.Options.RawMode.ValueFrom(l.Options)
 		log.WithFields(log.Fields{"addr": l.addr, "action": "end", "raw": raw}).Debug("accept")
 	}
 }
 
 func (l *listener) Listen() error {
-	if err := l.l.Listen(); err != nil {
+	if err := l.l.Listen(l.Options); err != nil {
 		return err
 	}
 

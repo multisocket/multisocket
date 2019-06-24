@@ -31,13 +31,10 @@ type pipe struct {
 var pipeID = utils.NewRecyclableIDGenerator()
 
 func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener, opts options.Options) *pipe {
-	defaultSendTimeout := PipeOptionSendTimeout.Value(parent.GetOptionDefault(PipeOptionSendTimeout, time.Duration(0)))
-	defaultRecvTimeout := PipeOptionRecvTimeout.Value(parent.GetOptionDefault(PipeOptionRecvTimeout, time.Duration(0)))
-	defaultCloseOnEOF := PipeOptionCloseOnEOF.Value(parent.GetOptionDefault(PipeOptionCloseOnEOF, true))
 	return &pipe{
-		sendTimeout: PipeOptionSendTimeout.Value(opts.GetOptionDefault(PipeOptionSendTimeout, defaultSendTimeout)),
-		recvTimeout: PipeOptionRecvTimeout.Value(opts.GetOptionDefault(PipeOptionRecvTimeout, defaultRecvTimeout)),
-		closeOnEOF:  PipeOptionCloseOnEOF.Value(opts.GetOptionDefault(PipeOptionCloseOnEOF, defaultCloseOnEOF)),
+		sendTimeout: Options.Pipe.SendTimeout.ValueFrom(opts, parent.Options),
+		recvTimeout: Options.Pipe.RecvTimeout.ValueFrom(opts, parent.Options),
+		closeOnEOF:  Options.Pipe.CloseOnEOF.ValueFrom(opts, parent.Options),
 
 		id:     pipeID.NextID(),
 		parent: parent,
@@ -63,11 +60,11 @@ func (p *pipe) IsRaw() bool {
 	return p.c.IsRaw()
 }
 
-func (p *pipe) Close() {
+func (p *pipe) Close() error {
 	p.Lock()
 	if p.closed {
 		p.Unlock()
-		return
+		return errs.ErrClosed
 	}
 	p.closed = true
 	p.Unlock()
@@ -77,7 +74,7 @@ func (p *pipe) Close() {
 
 	pipeID.Recycle(p.id)
 
-	return
+	return nil
 }
 
 func (p *pipe) Send(msg []byte, extras ...[]byte) (err error) {
@@ -88,7 +85,9 @@ func (p *pipe) SendTimeout(timeout time.Duration, msg []byte, extras ...[]byte) 
 	if timeout <= 0 {
 		if err = p.c.Send(msg, extras...); err != nil {
 			// NOTE: close on any error
-			p.Close()
+			if errx := p.Close(); errx != nil {
+				err = errx
+			}
 		}
 		return
 	}
@@ -125,7 +124,9 @@ func (p *pipe) RecvTimeout(timeout time.Duration) (msg []byte, err error) {
 					err = errs.ErrClosed
 				}
 			} else {
-				p.Close()
+				if errx := p.Close(); errx != nil {
+					err = errx
+				}
 			}
 		}
 		return

@@ -25,11 +25,6 @@ type (
 	}
 )
 
-const (
-	// -1: no limit
-	defaultConnLimit = -1
-)
-
 // New create a any Connector
 func New() Connector {
 	return NewWithOptions(nil)
@@ -37,7 +32,7 @@ func New() Connector {
 
 // NewWithOptions create a Connector with options
 func NewWithOptions(ovs options.OptionValues) Connector {
-	return NewWithLimitAndOptions(defaultConnLimit, ovs)
+	return NewWithLimitAndOptions(-1, ovs)
 }
 
 // NewWithLimitAndOptions create a Connector with limit and options
@@ -49,8 +44,7 @@ func NewWithLimitAndOptions(limit int, ovs options.OptionValues) Connector {
 		pipes:             make(map[uint32]*pipe),
 		pipeEventHandlers: make(map[PipeEventHandler]struct{}),
 	}
-	c.Options = options.NewOptionsWithAccepts(OptionConnLimit,
-		PipeOptionSendTimeout, PipeOptionRecvTimeout, PipeOptionCloseOnEOF).SetOptionChangeHook(c.onOptionChange)
+	c.Options = options.NewOptions().SetOptionChangeHook(c.onOptionChange)
 	for opt, val := range ovs {
 		c.SetOption(opt, val)
 	}
@@ -64,10 +58,10 @@ func NewWithLimitAndOptions(limit int, ovs options.OptionValues) Connector {
 
 func (c *connector) onOptionChange(opt options.Option, oldVal, newVal interface{}) {
 	switch opt {
-	case OptionConnLimit:
+	case Options.PipeLimit:
 		c.Lock()
 		oldLimit := c.limit
-		c.limit = OptionConnLimit.Value(newVal)
+		c.limit = Options.PipeLimit.Value(newVal)
 		if log.IsLevelEnabled(log.DebugLevel) {
 			log.WithField("domain", "connector").
 				WithField("oldLimit", oldLimit).
@@ -242,17 +236,12 @@ func (c *connector) NewDialer(addr string, ovs options.OptionValues) (d Dialer, 
 		return
 	}
 
-	xd := newDialer(c, addr, td)
+	xd := newDialer(c, addr, td, ovs)
 	if c.limit != -1 && c.limit <= len(c.pipes) {
 		// exceed limit
 		xd.stop()
 	}
 	d = xd
-	for opt, val := range ovs {
-		if err = d.SetOption(opt, val); err != nil {
-			return
-		}
-	}
 
 	c.dialers[xd] = struct{}{}
 	return d, nil
@@ -312,18 +301,12 @@ func (c *connector) NewListener(addr string, ovs options.OptionValues) (l Listen
 		return
 	}
 
-	xl := newListener(c, addr, tl)
+	xl := newListener(c, addr, tl, ovs)
 	if c.limit != -1 && c.limit <= len(c.pipes) {
 		// exceed limit
 		xl.stop()
 	}
 	l = xl
-	for opt, val := range ovs {
-		if err = l.SetOption(opt, val); err != nil {
-			tl.Close()
-			return
-		}
-	}
 
 	c.listeners[xl] = struct{}{}
 

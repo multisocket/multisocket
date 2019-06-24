@@ -11,17 +11,13 @@ import (
 )
 
 type (
-	tcpTran int
+	tcpTran string
 
 	dialer struct {
-		options.Options
-
 		addr *net.TCPAddr
 	}
 
 	listener struct {
-		options.Options
-
 		addr     *net.TCPAddr
 		bound    net.Addr
 		listener *net.TCPListener
@@ -30,8 +26,7 @@ type (
 
 const (
 	// Transport is a transport.Transport for TCP.
-	Transport = tcpTran(0)
-	scheme    = "tcp"
+	Transport = tcpTran("tcp")
 )
 
 func init() {
@@ -39,46 +34,49 @@ func init() {
 }
 
 func configTCP(conn *net.TCPConn, opts options.Options) error {
-	if val, ok := opts.GetOption(OptionNoDelay); ok {
-		if err := conn.SetNoDelay(OptionNoDelay.Value(val)); err != nil {
+	if val, ok := opts.GetOption(Options.NoDelay); ok {
+		if err := conn.SetNoDelay(Options.NoDelay.Value(val)); err != nil {
 			return err
 		}
 	}
-	if val, ok := opts.GetOption(OptionKeepAlive); ok {
-		if err := conn.SetKeepAlive(OptionKeepAlive.Value(val)); err != nil {
+	if val, ok := opts.GetOption(Options.KeepAlive); ok {
+		keepAlive := Options.KeepAlive.Value(val)
+		if err := conn.SetKeepAlive(keepAlive); err != nil {
 			return err
 		}
-	}
-	if val, ok := opts.GetOption(OptionKeepAliveTime); ok {
-		if err := conn.SetKeepAlivePeriod(OptionKeepAliveTime.Value(val)); err != nil {
-			return err
+		if keepAlive {
+			if val, ok := opts.GetOption(Options.KeepAlivePeriod); ok {
+				if err := conn.SetKeepAlivePeriod(Options.KeepAlivePeriod.Value(val)); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
 }
 
-func (d *dialer) Dial() (_ transport.Connection, err error) {
-	conn, err := net.DialTCP(scheme, nil, d.addr)
+func (d *dialer) Dial(opts options.Options) (_ transport.Connection, err error) {
+	conn, err := net.DialTCP("tcp", nil, d.addr)
 	if err != nil {
 		return nil, err
 	}
-	if err = configTCP(conn, d.Options); err != nil {
+	if err = configTCP(conn, opts); err != nil {
 		conn.Close()
 		return nil, err
 	}
 
-	return transport.NewConnection(Transport, transport.NewPrimitiveConn(conn), d.Options)
+	return transport.NewConnection(opts, Transport, transport.NewPrimitiveConn(conn))
 }
 
-func (l *listener) Listen() (err error) {
-	l.listener, err = net.ListenTCP(scheme, l.addr)
+func (l *listener) Listen(opts options.Options) (err error) {
+	l.listener, err = net.ListenTCP("tcp", l.addr)
 	if err == nil {
 		l.bound = l.listener.Addr()
 	}
 	return
 }
 
-func (l *listener) Accept() (transport.Connection, error) {
+func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
 	if l.listener == nil {
 		return nil, errs.ErrBadOperateState
 	}
@@ -87,18 +85,18 @@ func (l *listener) Accept() (transport.Connection, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = configTCP(conn, l.Options); err != nil {
+	if err = configTCP(conn, opts); err != nil {
 		conn.Close()
 		return nil, err
 	}
-	return transport.NewConnection(Transport, transport.NewPrimitiveConn(conn), l.Options)
+	return transport.NewConnection(opts, Transport, transport.NewPrimitiveConn(conn))
 }
 
 func (l *listener) Address() string {
 	if b := l.bound; b != nil {
-		return fmt.Sprintf("%s://%s", scheme, b.String())
+		return fmt.Sprintf("%s://%s", Transport.Scheme(), b.String())
 	}
-	return fmt.Sprintf("%s://%s", scheme, l.addr.String())
+	return fmt.Sprintf("%s://%s", Transport.Scheme(), l.addr.String())
 }
 
 func (l *listener) Close() error {
@@ -109,15 +107,7 @@ func (l *listener) Close() error {
 }
 
 func (t tcpTran) Scheme() string {
-	return scheme
-}
-
-func newDefaultOptions() options.Options {
-	// default options
-	return options.NewOptions().
-		WithOption(OptionNoDelay, true).
-		WithOption(OptionKeepAlive, true).
-		WithOption(transport.OptionMaxRecvMsgSize, 1024*1024)
+	return string(t)
 }
 
 func (t tcpTran) NewDialer(address string) (transport.Dialer, error) {
@@ -133,7 +123,7 @@ func (t tcpTran) NewDialer(address string) (transport.Dialer, error) {
 		return nil, err
 	}
 
-	d := &dialer{Options: newDefaultOptions(), addr: addr}
+	d := &dialer{addr: addr}
 
 	return d, nil
 }
@@ -152,7 +142,7 @@ func (t tcpTran) NewListener(address string) (transport.Listener, error) {
 		return nil, err
 	}
 
-	l := &listener{Options: newDefaultOptions(), addr: addr}
+	l := &listener{addr: addr}
 
 	return l, nil
 }

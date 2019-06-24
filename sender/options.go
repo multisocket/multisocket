@@ -1,20 +1,29 @@
 package sender
 
 import (
+	"github.com/webee/multisocket/message"
 	"github.com/webee/multisocket/options"
 )
 
-type optionName int
-
-const (
-	optionNameTTL optionName = iota
-	optionNameSendQueueSize
-	optionNameSendBestEffort
+type (
+	senderOptions struct {
+		TTL            options.Uint8Option
+		SendQueueSize  options.Uint16Option
+		SendBestEffort options.BoolOption
+	}
 )
 
-// Options
 var (
-	OptionTTL            = options.NewUint8Option(optionNameTTL)
-	OptionSendQueueSize  = options.NewUint16Option(optionNameSendQueueSize)
-	OptionSendBestEffort = options.NewBoolOption(optionNameSendBestEffort)
+	// OptionDomains is option's domain
+	OptionDomains = []string{"sender"}
+	// Options for sender
+	Options = senderOptions{
+		TTL:            options.NewUint8Option(message.DefaultMsgTTL),
+		SendQueueSize:  options.NewUint16Option(64),
+		SendBestEffort: options.NewBoolOption(false),
+	}
 )
+
+func init() {
+	options.RegisterStructuredOptions(Options, OptionDomains)
+}
