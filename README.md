@@ -3,7 +3,7 @@ multisocket is an network library. Like nanomsg and zeromq, multisocket supports
 Unlike them, multisocket implements a message based bidirectional tx/rx independent and stateless Socket, Based on it, various protocols(reqrep, pubsub, pipline, bus etc) are built. multisocket provides sematic and easy to use interfaces to help you build complex message systems.
 
 ## Quick Start
-**server**
+**server**  
 Socket is stateless, supports recveiving concurrently.
 ```golang
     sock := multisocket.NewDefault()
@@ -30,7 +30,7 @@ Socket is stateless, supports recveiving concurrently.
     go worker(1)
 ```
 
-**client**
+**client**  
 tx/rx are independent
 ```golang
     sock := multisocket.NewDefault()
