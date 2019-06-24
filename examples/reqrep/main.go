@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/webee/multisocket/address"
+
 	"github.com/webee/multisocket/examples"
 
 	log "github.com/sirupsen/logrus"
@@ -22,14 +24,14 @@ func init() {
 }
 
 func main() {
-	// client("dial", "tcp://127.0.0.1:30001", "webee")
-	if len(os.Args) > 3 && os.Args[1] == "rep" {
-		n, _ := strconv.Atoi(os.Args[4])
-		server(os.Args[2], os.Args[3], n)
+	// client("tcp://127.0.0.1:30001#dial", "webee")
+	if len(os.Args) > 2 && os.Args[1] == "rep" {
+		n, _ := strconv.Atoi(os.Args[3])
+		server(os.Args[2], n)
 		os.Exit(0)
 	}
-	if len(os.Args) > 4 && os.Args[1] == "req" {
-		client(os.Args[2], os.Args[3], os.Args[4])
+	if len(os.Args) > 3 && os.Args[1] == "req" {
+		client(os.Args[2], os.Args[3])
 		os.Exit(0)
 	}
 	fmt.Fprintf(os.Stderr,
@@ -37,34 +39,22 @@ func main() {
 	os.Exit(1)
 }
 
-func server(t, addr string, n int) {
+func server(addr string, n int) {
 	rep := reqrep.NewRep(reqHandler(n))
 	rep.Start()
-	switch t {
-	case "dial":
-		if err := rep.Dial(addr); err != nil {
-			log.WithField("err", err).Panicf("dial")
-		}
-	default:
-		if err := rep.Listen(addr); err != nil {
-			log.WithField("err", err).Panicf("listen")
-		}
+
+	if err := address.Connect(rep, addr); err != nil {
+		log.WithField("err", err).Panicf("connect")
 	}
 
 	examples.SetupSignal()
 }
 
-func client(t, addr string, name string) {
+func client(addr string, name string) {
 	req := reqrep.NewReq()
-	switch t {
-	case "listen":
-		if err := req.Listen(addr); err != nil {
-			log.WithField("err", err).Panicf("listen")
-		}
-	default:
-		if err := req.Dial(addr); err != nil {
-			log.WithField("err", err).Panicf("dial")
-		}
+
+	if err := address.Connect(req, addr); err != nil {
+		log.WithField("err", err).Panicf("connect")
 	}
 
 	idx := 0
@@ -76,7 +66,7 @@ func client(t, addr string, name string) {
 		} else {
 			fmt.Printf("%s\n", string(reply))
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 		idx++
 	}
 }

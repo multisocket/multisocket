@@ -131,3 +131,15 @@ func (sa *multiSocketAddress) Connect(ctr DialListener, ovses ...options.OptionV
 		return ErrConnectTypeMissing
 	}
 }
+
+// Connect parse s to MultiSocketAddress and Connect with option values.
+func Connect(ctr DialListener, s string, ovses ...options.OptionValues) (err error) {
+	var (
+		sa MultiSocketAddress
+	)
+	if sa, err = ParseMultiSocketAddress(s); err != nil {
+		return
+	}
+
+	return sa.Connect(ctr, ovses...)
+}

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/webee/multisocket/address"
+
 	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/options"
 
@@ -24,14 +26,14 @@ func init() {
 }
 
 func main() {
-	// client("dial", "tcp://127.0.0.1:30001", "webee")
-	if len(os.Args) > 4 && os.Args[1] == "push" {
-		n, _ := strconv.Atoi(os.Args[4])
-		pusher(os.Args[2], os.Args[3], n)
+	// client("tcp://127.0.0.1:30001#dial", "webee")
+	if len(os.Args) > 3 && os.Args[1] == "push" {
+		n, _ := strconv.Atoi(os.Args[3])
+		pusher(os.Args[2], n)
 		os.Exit(0)
 	}
-	if len(os.Args) > 3 && os.Args[1] == "pull" {
-		puller(os.Args[2], os.Args[3])
+	if len(os.Args) > 2 && os.Args[1] == "pull" {
+		puller(os.Args[2])
 		os.Exit(0)
 	}
 	fmt.Fprintf(os.Stderr,
@@ -39,17 +41,11 @@ func main() {
 	os.Exit(1)
 }
 
-func pusher(t, addr string, n int) {
+func pusher(addr string, n int) {
 	pusher := pipeline.NewPush()
-	switch t {
-	case "dial":
-		if err := pusher.DialOptions(addr, options.OptionValues{connector.DialerOptionDialAsync: true}); err != nil {
-			log.WithField("err", err).Panicf("dial")
-		}
-	default:
-		if err := pusher.Listen(addr); err != nil {
-			log.WithField("err", err).Panicf("listen")
-		}
+
+	if err := address.Connect(pusher, addr, options.OptionValues{connector.Options.Dialer.DialAsync: true}); err != nil {
+		log.WithField("err", err).Panicf("connect")
 	}
 
 	idx := 0
@@ -65,17 +61,11 @@ func pusher(t, addr string, n int) {
 	}
 }
 
-func puller(t, addr string) {
+func puller(addr string) {
 	puller := pipeline.NewPull()
-	switch t {
-	case "listen":
-		if err := puller.Listen(addr); err != nil {
-			log.WithField("err", err).Panicf("listen")
-		}
-	default:
-		if err := puller.DialOptions(addr, options.OptionValues{connector.DialerOptionDialAsync: true}); err != nil {
-			log.WithField("err", err).Panicf("dial")
-		}
+
+	if err := address.Connect(puller, addr, options.OptionValues{connector.Options.Dialer.DialAsync: true}); err != nil {
+		log.WithField("err", err).Panicf("connect")
 	}
 
 	for {
@@ -84,6 +74,6 @@ func puller(t, addr string) {
 			log.WithError(err).Error("recv")
 			break
 		}
-		fmt.Println(string(content))
+		log.Info(string(content))
 	}
 }

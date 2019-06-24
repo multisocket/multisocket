@@ -5,6 +5,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/webee/multisocket/address"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/errs"
@@ -21,16 +23,21 @@ func init() {
 }
 
 func main() {
-	conns := connector.New()
+	ctr := connector.New()
+	ctr.RegisterPipeEventHandler(handler(0))
 
-	conns.RegisterPipeEventHandler(handler(0))
-
-	if err := conns.Listen(os.Args[1]); err != nil {
-		log.WithField("err", err).Panicf("listen")
+	sa, err := address.ParseMultiSocketAddress(os.Args[1])
+	if err != nil {
+		log.WithError(err).Panic("ParseMultiSocketAddress")
 	}
+
+	if err := sa.Connect(ctr); err != nil {
+		log.WithField("err", err).WithFields(log.Fields{"address": sa}).Panicf("connect")
+	}
+
 	time.AfterFunc(time.Second*10, func() {
 		// limit connections to 1, keep already connected pipes, can't establish connections more than 1.
-		conns.SetOption(connector.OptionConnLimit, 1)
+		ctr.SetOption(connector.Options.PipeLimit, 1)
 	})
 
 	examples.SetupSignal()
@@ -60,5 +67,6 @@ func readPipe(pipe connector.Pipe) {
 			}
 		}
 		fmt.Fprintln(os.Stderr, string(content))
+		time.Sleep(1 * time.Second)
 	}
 }

@@ -7,9 +7,9 @@ import (
 	"github.com/webee/multisocket/examples"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/webee/multisocket/address"
 	"github.com/webee/multisocket/protocol/stream"
 	_ "github.com/webee/multisocket/transport/all"
-	"github.com/webee/multisocket/utils/connutils"
 )
 
 func init() {
@@ -25,15 +25,15 @@ func main() {
 	frontAddr := os.Args[2]
 
 	backStream, frontStream := stream.NewProxy()
-	if err := connutils.ParseSmartAddress(backAddr).Connect(backStream, nil); err != nil {
+	if err := address.Connect(backStream, backAddr); err != nil {
 		log.WithField("err", err).WithField("stream", "back").Panicf("connect")
 	}
-	backStream.SetOption(stream.OptionConnKeepAliveIdle, 10*time.Second)
+	backStream.SetOption(stream.Options.ConnKeepAliveIdle, 10*time.Second)
 
-	if err := connutils.ParseSmartAddress(frontAddr).Connect(frontStream, nil); err != nil {
+	if err := address.Connect(frontStream, frontAddr); err != nil {
 		log.WithField("err", err).WithField("stream", "front").Panicf("connect")
 	}
-	frontStream.SetOption(stream.OptionConnKeepAliveIdle, 10*time.Second)
+	frontStream.SetOption(stream.Options.ConnKeepAliveIdle, 10*time.Second)
 
 	examples.SetupSignal()
 }

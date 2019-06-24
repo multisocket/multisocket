@@ -20,7 +20,7 @@ type (
 		timeout time.Duration
 
 		sync.RWMutex
-		closedq chan struct{}
+		closedq  chan struct{}
 		reqID    uint32
 		requests map[uint32]*Request
 	}
@@ -38,7 +38,7 @@ func NewReq() Req {
 // NewReqWithTimeout create a Req protocol instance with request timeout
 func NewReqWithTimeout(timeout time.Duration) Req {
 	sock := multisocket.NewDefault()
-	sock.GetSender().SetOption(sender.OptionSendBestEffort, true)
+	sock.GetSender().SetOption(sender.Options.SendBestEffort, true)
 
 	req := &req{
 		Socket:   sock,

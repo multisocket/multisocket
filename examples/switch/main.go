@@ -5,9 +5,9 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/address"
 	"github.com/webee/multisocket/examples"
 	_ "github.com/webee/multisocket/transport/all"
-	"github.com/webee/multisocket/utils/connutils"
 )
 
 func init() {
@@ -23,12 +23,12 @@ func main() {
 	frontAddr := os.Args[2]
 
 	sockBack := multisocket.NewDefault()
-	if err := connutils.ParseSmartAddress(backAddr).Connect(sockBack, nil); err != nil {
+	if err := address.Connect(sockBack, backAddr); err != nil {
 		log.WithField("err", err).WithField("socket", "back").Panicf("connect")
 	}
 
 	sockFront := multisocket.NewDefault()
-	if err := connutils.ParseSmartAddress(frontAddr).Connect(sockFront, nil); err != nil {
+	if err := address.Connect(sockFront, frontAddr); err != nil {
 		log.WithField("err", err).WithField("socket", "front").Panicf("connect")
 	}
 

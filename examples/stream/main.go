@@ -6,10 +6,10 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/webee/multisocket/address"
 	"github.com/webee/multisocket/examples"
 	"github.com/webee/multisocket/protocol/stream"
 	_ "github.com/webee/multisocket/transport/all"
-	"github.com/webee/multisocket/utils/connutils"
 )
 
 func init() {
@@ -25,13 +25,12 @@ func main() {
 	addrs := os.Args[2:]
 	protoStream := stream.New()
 	for _, addr := range addrs {
-		sa := connutils.ParseSmartAddress(addr)
-		if err := sa.Connect(protoStream, nil); err != nil {
+		if err := address.Connect(protoStream, addr); err != nil {
 			log.WithField("err", err).Panicf("connect")
 		}
 	}
 
-	protoStream.SetOption(stream.OptionConnKeepAliveIdle, 10*time.Second)
+	protoStream.SetOption(stream.Options.ConnKeepAliveIdle, 10*time.Second)
 
 	if x == "server" {
 		server(protoStream)

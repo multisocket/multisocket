@@ -5,12 +5,12 @@ import (
 	"os"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/webee/multisocket/address"
 	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/protocol/stream"
 	"github.com/webee/multisocket/transport"
 	_ "github.com/webee/multisocket/transport/all"
-	"github.com/webee/multisocket/utils/connutils"
 )
 
 func init() {
@@ -28,7 +28,7 @@ func main() {
 	rawAddr := os.Args[2]
 
 	protoStream := stream.New()
-	if err := connutils.ParseSmartAddress(streamAddr).Connect(protoStream, options.OptionValues{connector.PipeOptionCloseOnEOF: true}); err != nil {
+	if err := address.Connect(protoStream, streamAddr, options.OptionValues{connector.Options.Pipe.CloseOnEOF: true}); err != nil {
 		log.WithField("err", err).Panicf("stream connect")
 	}
 
@@ -44,8 +44,8 @@ func main() {
 	for i := 0; i < 3; i++ {
 		rawStream.DialOptions(rawAddr,
 			options.OptionValues{
-				transport.OptionConnRawMode:     true,
-				connector.DialerOptionDialAsync: true,
+				transport.Options.RawMode:          true,
+				connector.Options.Dialer.DialAsync: true,
 			})
 	}
 
@@ -58,9 +58,9 @@ func main() {
 		// async dial
 		rawStream.DialOptions(rawAddr,
 			options.OptionValues{
-				transport.OptionConnRawMode:     true,
-				connector.DialerOptionDialAsync: true,
-				connector.DialerOptionReconnect: false,
+				transport.Options.RawMode:          true,
+				connector.Options.Dialer.DialAsync: true,
+				connector.Options.Dialer.Reconnect: false,
 			})
 
 		if rawConn, err = rawStream.Accept(); err != nil {

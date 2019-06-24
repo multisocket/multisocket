@@ -7,13 +7,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/webee/multisocket/address"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
-	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/examples"
 	"github.com/webee/multisocket/message"
-	"github.com/webee/multisocket/options"
-	"github.com/webee/multisocket/transport"
 	_ "github.com/webee/multisocket/transport/all"
 )
 
@@ -26,48 +25,36 @@ func init() {
 }
 
 func main() {
-	// server("listen", "tcp://127.0.0.1:30001", "tcp://127.0.0.1:30002")
-	// client("tcp://127.0.0.1:30001", "webee")
-	if len(os.Args) > 3 && os.Args[1] == "server" {
-		rawAddr := ""
-		if len(os.Args) > 4 {
-			rawAddr = os.Args[4]
+	if len(os.Args) > 2 && os.Args[1] == "server" {
+		addrs := make([]address.MultiSocketAddress, len(os.Args)-2)
+		for i, s := range os.Args[2:] {
+			sa, err := address.ParseMultiSocketAddress(s)
+			if err != nil {
+				log.WithError(err).Panic("ParseMultiSocketAddress")
+			}
+			addrs[i] = sa
 		}
-		server(os.Args[2], os.Args[3], rawAddr)
+		server(addrs...)
 		os.Exit(0)
 	}
-	if len(os.Args) > 4 && os.Args[1] == "client" {
-		client(os.Args[2], os.Args[3], os.Args[4])
+	if len(os.Args) > 3 && os.Args[1] == "client" {
+		addr, err := address.ParseMultiSocketAddress(os.Args[3])
+		if err != nil {
+			log.WithError(err).Panic("ParseMultiSocketAddress")
+		}
+		client(os.Args[2], addr)
 		os.Exit(0)
 	}
-	fmt.Fprintf(os.Stderr,
-		"Usage: socket server|client dial|listen <URL> <ARG> ...\n")
+	fmt.Fprintf(os.Stderr, "Usage: socket server|client dial|listen <URL> <ARG> ...\n")
 	os.Exit(1)
 }
 
-func server(t, addr, rawAddr string) {
+func server(addrs ...address.MultiSocketAddress) {
 	sock := multisocket.NewDefault()
 
-	switch t {
-	case "dial":
-		if err := sock.Dial(addr); err != nil {
-			log.WithField("err", err).Panicf("dial")
-		}
-		if rawAddr != "" {
-			if err := sock.DialOptions(rawAddr,
-				options.OptionValues{transport.OptionConnRawMode: true, connector.PipeOptionCloseOnEOF: false}); err != nil {
-				log.WithField("err", err).Panicf("dial raw")
-			}
-		}
-	default:
-		if err := sock.Listen(addr); err != nil {
-			log.WithField("err", err).Panicf("listen")
-		}
-		if rawAddr != "" {
-			if err := sock.ListenOptions(rawAddr,
-				options.OptionValues{transport.OptionConnRawMode: true, connector.PipeOptionCloseOnEOF: false}); err != nil {
-				log.WithField("err", err).Panicf("listen raw")
-			}
+	for _, addr := range addrs {
+		if err := addr.Connect(sock); err != nil {
+			log.WithField("err", err).WithFields(log.Fields{"address": addr}).Panicf("connect")
 		}
 	}
 
@@ -101,7 +88,7 @@ func server(t, addr, rawAddr string) {
 	examples.SetupSignal()
 }
 
-func client(t, addr string, name string) {
+func client(name string, addr address.MultiSocketAddress) {
 	var (
 		err     error
 		content []byte
@@ -109,15 +96,8 @@ func client(t, addr string, name string) {
 
 	sock := multisocket.NewDefault()
 
-	switch t {
-	case "listen":
-		if err := sock.Listen(addr); err != nil {
-			log.WithField("err", err).Panicf("listen")
-		}
-	default:
-		if err := sock.Dial(addr); err != nil {
-			log.WithField("err", err).Panicf("dial")
-		}
+	if err := addr.Connect(sock); err != nil {
+		log.WithField("err", err).WithFields(log.Fields{"address": addr}).Panicf("connect")
 	}
 
 	// sending
