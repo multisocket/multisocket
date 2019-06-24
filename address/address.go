@@ -5,18 +5,23 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/options"
 )
 
 type (
+	// DialListener is for connecting peers
+	DialListener interface {
+		DialOptions(addr string, ovs options.OptionValues) error
+		ListenOptions(addr string, ovs options.OptionValues) error
+	}
+
 	// MultiSocketAddress group dial/listen, async, raw and address together
 	MultiSocketAddress interface {
 		String() string
 		ConnectType() string
 		Address() string
 		OptionValues() options.OptionValues
-		Connect(ctr connector.ConnectorCoreAction, ovs options.OptionValues) error
+		Connect(ctr DialListener, ovses ...options.OptionValues) error
 	}
 
 	multiSocketAddress struct {
@@ -106,13 +111,15 @@ func (sa *multiSocketAddress) OptionValues() options.OptionValues {
 	return sa.ovs
 }
 
-func (sa *multiSocketAddress) Connect(ctr connector.ConnectorCoreAction, ovs options.OptionValues) error {
+func (sa *multiSocketAddress) Connect(ctr DialListener, ovses ...options.OptionValues) error {
 	xovs := options.OptionValues{}
 	for o, v := range sa.ovs {
 		xovs[o] = v
 	}
-	for o, v := range ovs {
-		xovs[o] = v
+	for _, ovs := range ovses {
+		for o, v := range ovs {
+			xovs[o] = v
+		}
 	}
 
 	switch sa.connType {
