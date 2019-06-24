@@ -64,7 +64,7 @@ tx/rx are independent
 ```
 
 ## Design
-There are three layers: Protocol, Socket, Transport.
+There are three layers: Protocol, Socket, Transport.  
 ![multisocket](files/multisocket.png)
 
 ### Transport
