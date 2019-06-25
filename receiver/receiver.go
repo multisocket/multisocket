@@ -274,12 +274,15 @@ func (r *receiver) Close() {
 	default:
 		close(r.closedq)
 	}
+	connectors := make([]Connector, 0, len(r.attachedConnectors))
+	for conns := range r.attachedConnectors {
+		delete(r.attachedConnectors, conns)
+		connectors = append(connectors, conns)
+	}
+	r.Unlock()
 
 	// unregister
-	for conns := range r.attachedConnectors {
+	for _, conns := range connectors {
 		conns.UnregisterPipeEventHandler(r)
-		delete(r.attachedConnectors, conns)
 	}
-
-	r.Unlock()
 }

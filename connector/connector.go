@@ -75,6 +75,10 @@ func (c *connector) onOptionChange(opt options.Option, oldVal, newVal interface{
 
 // used by other functions, must get lock first
 func (c *connector) checkLimit(checkNoLimit bool) {
+	if c.closed {
+		return
+	}
+
 	if checkNoLimit && c.limit == -1 {
 		// start connecting
 		for l := range c.listeners {
@@ -348,6 +352,7 @@ func (c *connector) Close() {
 		c.Unlock()
 		return
 	}
+	c.closed = true
 	listeners := c.listeners
 	dialers := c.dialers
 	pipes := c.pipes
