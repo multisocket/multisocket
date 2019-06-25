@@ -65,7 +65,7 @@ tx/rx are independent
 
 ## Design
 There are three layers: Protocol, Socket, Transport.  
-![multisocket](files/multisocket.png)
+![multisocket](files/multisocket.jpg)
 
 ### Transport
 Transport is responsible for connections between peers, common transports include: inproc, ipc, tcp, websocket etc. It's easy to implement custom transports if needed.
