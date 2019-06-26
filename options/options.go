@@ -19,6 +19,7 @@ type (
 		SetOption(opt Option, val interface{}) (err error)
 		SetOptionIfNotExists(opt Option, val interface{}) (err error)
 		GetOption(opt Option) (val interface{}, ok bool)
+		GetOptionDefault(opt Option) interface{}
 		OptionValues() OptionValues
 		SetOptionChangeHook(hook OptionChangeHook) Options
 	}
@@ -317,8 +318,8 @@ func (opts *options) SetOptionIfNotExists(opt Option, val interface{}) (err erro
 func (opts *options) GetOption(opt Option) (val interface{}, ok bool) {
 	if opts.acceptOption(opt) {
 		opts.RLock()
-		defer opts.RUnlock()
 		val, ok = opts.opts[opt]
+		opts.RUnlock()
 		return
 	} else if opts.downstream != nil {
 		// pass to downstream
@@ -328,14 +329,23 @@ func (opts *options) GetOption(opt Option) (val interface{}, ok bool) {
 	return
 }
 
+// GetOptionDefault get an option value or option default value.
+func (opts *options) GetOptionDefault(opt Option) interface{} {
+	if val, ok := opts.GetOption(opt); ok {
+		return val
+	}
+	return opt.DefaultValue()
+}
+
 func (opts *options) OptionValues() (res OptionValues) {
 	opts.RLock()
-	defer opts.RUnlock()
 
 	res = make(map[Option]interface{})
 	for opt, val := range opts.opts {
 		res[opt] = val
 	}
+	opts.RUnlock()
+
 	return
 }
 

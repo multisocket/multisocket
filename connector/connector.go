@@ -183,8 +183,9 @@ func (c *connector) remPipe(p *pipe) {
 	c.Unlock()
 
 	if log.IsLevelEnabled(log.DebugLevel) {
+		isRaw := p.GetOptionDefault(Options.Pipe.RawMode)
 		log.WithField("domain", "connector").
-			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw(), "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
+			WithFields(log.Fields{"id": p.ID(), "raw": isRaw, "localAddress": p.LocalAddress(), "remoteAddress": p.RemoteAddress()}).
 			WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
 			Debug("remove pipe")
 	}

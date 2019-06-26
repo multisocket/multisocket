@@ -1,7 +1,10 @@
 package sender
 
 import (
+	"net"
 	"sync"
+
+	"github.com/webee/multisocket/bytespool"
 
 	"github.com/webee/multisocket/errs"
 
@@ -16,7 +19,7 @@ type (
 		options.Options
 		sendq chan *Message
 
-		sync.Mutex
+		sync.RWMutex
 		closedq            chan struct{}
 		attachedConnectors map[Connector]struct{}
 		pipes              map[uint32]*pipe
@@ -26,6 +29,14 @@ type (
 		stopq chan struct{}
 		p     Pipe
 		sendq chan *Message
+	}
+)
+
+var (
+	netBufsPool = &sync.Pool{
+		New: func() interface{} {
+			return make(net.Buffers, 0, 4)
+		},
 	}
 )
 
@@ -103,15 +114,15 @@ func (s *sender) AttachConnector(connector Connector) {
 
 // options
 func (s *sender) ttl() uint8 {
-	return Options.TTL.ValueFrom(s.Options)
+	return s.GetOptionDefault(Options.TTL).(uint8)
 }
 
 func (s *sender) sendQueueSize() uint16 {
-	return Options.SendQueueSize.ValueFrom(s.Options)
+	return s.GetOptionDefault(Options.SendQueueSize).(uint16)
 }
 
 func (s *sender) bestEffort() bool {
-	return Options.SendBestEffort.ValueFrom(s.Options)
+	return s.GetOptionDefault(Options.SendBestEffort).(bool)
 }
 
 func (s *sender) HandlePipeEvent(e PipeEvent, pipe Pipe) {
@@ -125,10 +136,10 @@ func (s *sender) HandlePipeEvent(e PipeEvent, pipe Pipe) {
 
 func (s *sender) addPipe(pipe Pipe) {
 	s.Lock()
-	defer s.Unlock()
 	p := s.newPipe(pipe)
 	s.pipes[p.p.ID()] = p
 	go s.run(p)
+	s.Unlock()
 }
 
 func (s *sender) remPipe(id uint32) {
@@ -158,14 +169,12 @@ DRAIN_MSG_LOOP:
 	}
 }
 
-func (s *sender) resendMsg(msg *Message) bool {
+func (s *sender) resendMsg(msg *Message) error {
 	if msg.Header.SendType() == SendTypeToOne {
-		// only resend when send one, so we can choose another pipe to send.
-		if err := s.SendMsg(msg); err == nil {
-			return true
-		}
+		// only resend when send to one, so we can choose another pipe to send.
+		return s.SendMsg(msg)
 	}
-	return false
+	return nil
 }
 
 func (s *sender) run(p *pipe) {
@@ -204,17 +213,21 @@ SENDING:
 		}
 
 		if err = sendMsg(msg); err != nil {
-			if !s.resendMsg(msg) {
-				// TODO: maybe free msg bytes.
-			}
-
 			if log.IsLevelEnabled(log.DebugLevel) {
 				log.WithField("domain", "sender").
 					WithError(err).
 					WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
 					Error("sendMsg")
 			}
+			if errx := s.resendMsg(msg); errx != nil {
+				// free
+				msg.FreeAll()
+			}
+
 			break SENDING
+		} else {
+			// free
+			msg.FreeAll()
 		}
 	}
 	// seems can be moved to case <-s.closedq
@@ -226,12 +239,25 @@ SENDING:
 	}
 }
 
-func (p *pipe) sendMsg(msg *Message) error {
+func (p *pipe) sendMsg(msg *Message) (err error) {
 	if msg.Header.HasFlags(message.MsgFlagRaw) {
 		// ignore raw messages. raw message is only for stream, forward raw message makes no sense.
 		return nil
 	}
-	return p.p.Send(nil, msg.Encode()...)
+
+	bufs := netBufsPool.Get().(net.Buffers)
+	hbuf := msg.Header.Encode()
+	bufs = append(bufs, hbuf, msg.Source, msg.Destination, msg.Content)
+	_, err = bufs.WriteTo(p.p)
+
+	// free
+	// hbuf
+	bytespool.Free(hbuf)
+
+	// bufs
+	bufs = bufs[:0]
+	netBufsPool.Put(bufs)
+	return
 }
 
 func (p *pipe) sendRawMsg(msg *Message) (err error) {
@@ -239,28 +265,33 @@ func (p *pipe) sendRawMsg(msg *Message) (err error) {
 		// ignore none normal messages.
 		return
 	}
-	return p.p.Send(msg.Content, msg.Extras...)
+	_, err = p.p.Write(msg.Content)
+
+	return
 }
 
-func (s *sender) newMsg(sendType uint8, dest MsgPath, content []byte, extras [][]byte) (msg *Message) {
-	return newMessage(sendType, s.ttl(), dest, content, extras)
+func (s *sender) newMsg(sendType uint8, dest MsgPath, content []byte) (msg *Message) {
+	return message.NewMessage(sendType, dest, 0, s.ttl(), content)
 }
 
 func (s *sender) sendTo(msg *Message) (err error) {
 	var (
-		id uint32
-		ok bool
-		p  *pipe
+		id   uint32
+		dest MsgPath
+		ok   bool
+		p    *pipe
 	)
 	if msg.Header.Distance == 0 {
 		// already arrived, just drop
 		return
 	}
 
-	if id, ok = msg.Destination.CurID(); !ok {
+	if id, dest, ok = msg.Destination.NextID(); !ok {
 		err = ErrBadDestination
 		return
 	}
+	msg.Destination = dest
+	msg.Header.Distance--
 
 	s.Lock()
 	p = s.pipes[id]
@@ -273,16 +304,26 @@ func (s *sender) sendTo(msg *Message) (err error) {
 	return s.doPushMsg(msg, p.sendq)
 }
 
-func (s *sender) SendTo(dest MsgPath, content []byte, extras ...[]byte) (err error) {
-	return s.sendTo(s.newMsg(SendTypeToDest, dest, content, extras))
+func (s *sender) sendToAll(msg *Message) (err error) {
+	s.RLock()
+	for _, p := range s.pipes {
+		s.doPushMsg(msg.Dup(), p.sendq)
+	}
+	s.RUnlock()
+	msg.FreeAll()
+	return nil
 }
 
-func (s *sender) Send(content []byte, extras ...[]byte) (err error) {
-	return s.SendMsg(s.newMsg(SendTypeToOne, nil, content, extras))
+func (s *sender) Send(content []byte) (err error) {
+	return s.doPushMsg(s.newMsg(SendTypeToOne, nil, content), s.sendq)
 }
 
-func (s *sender) SendAll(content []byte, extras ...[]byte) (err error) {
-	return s.SendMsg(s.newMsg(SendTypeToAll, nil, content, extras))
+func (s *sender) SendTo(dest MsgPath, content []byte) (err error) {
+	return s.sendTo(s.newMsg(SendTypeToDest, dest, content))
+}
+
+func (s *sender) SendAll(content []byte) (err error) {
+	return s.sendToAll(s.newMsg(SendTypeToAll, nil, content))
 }
 
 func (s *sender) SendMsg(msg *Message) error {
@@ -292,16 +333,7 @@ func (s *sender) SendMsg(msg *Message) error {
 	case SendTypeToOne:
 		return s.doPushMsg(msg, s.sendq)
 	case SendTypeToAll:
-		s.Lock()
-		pipes := make([]*pipe, len(s.pipes))
-		i := 0
-		for _, p := range s.pipes {
-			pipes[i] = p
-			i++
-		}
-		s.Unlock()
-		go s.pushMsgToPipes(msg, pipes)
-		return nil
+		return s.sendToAll(msg)
 	}
 	return ErrInvalidSendType
 }

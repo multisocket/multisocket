@@ -3,7 +3,6 @@ package connector
 import (
 	"io"
 	"sync"
-	"time"
 
 	"github.com/webee/multisocket/options"
 
@@ -15,30 +14,35 @@ import (
 // pipe wraps the transport.Connection data structure with the stuff we need to keep.
 // It implements the Pipe interface.
 type pipe struct {
-	sendTimeout time.Duration
-	recvTimeout time.Duration
-	closeOnEOF  bool
+	options.Options
+	transport.Connection
+	closeOnEOF bool
+	raw        bool
+	id         uint32
+	parent     *connector
+	d          *dialer
+	l          *listener
 
 	sync.Mutex
 	closed bool
-	id     uint32
-	parent *connector
-	c      transport.Connection
-	l      *listener
-	d      *dialer
 }
 
 var pipeID = utils.NewRecyclableIDGenerator()
 
 func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener, opts options.Options) *pipe {
+	pipeOpts := options.NewOptionsWithValues(options.OptionValues{
+		Options.Pipe.CloseOnEOF:     Options.Pipe.CloseOnEOF.ValueFrom(opts, parent.Options),
+		Options.Pipe.RawMode:        Options.Pipe.RawMode.ValueFrom(opts, parent.Options),
+		Options.Pipe.RawRecvBufSize: Options.Pipe.RawRecvBufSize.ValueFrom(opts, parent.Options),
+	})
 	return &pipe{
-		sendTimeout: Options.Pipe.SendTimeout.ValueFrom(opts, parent.Options),
-		recvTimeout: Options.Pipe.RecvTimeout.ValueFrom(opts, parent.Options),
-		closeOnEOF:  Options.Pipe.CloseOnEOF.ValueFrom(opts, parent.Options),
+		Options:    pipeOpts,
+		Connection: tc,
+		closeOnEOF: Options.Pipe.CloseOnEOF.ValueFrom(pipeOpts),
+		raw:        Options.Pipe.RawMode.ValueFrom(pipeOpts),
 
 		id:     pipeID.NextID(),
 		parent: parent,
-		c:      tc,
 		d:      d,
 		l:      l,
 	}
@@ -48,16 +52,8 @@ func (p *pipe) ID() uint32 {
 	return p.id
 }
 
-func (p *pipe) LocalAddress() string {
-	return p.c.LocalAddress()
-}
-
-func (p *pipe) RemoteAddress() string {
-	return p.c.RemoteAddress()
-}
-
 func (p *pipe) IsRaw() bool {
-	return p.c.IsRaw()
+	return p.raw
 }
 
 func (p *pipe) Close() error {
@@ -69,7 +65,7 @@ func (p *pipe) Close() error {
 	p.closed = true
 	p.Unlock()
 
-	p.c.Close()
+	p.Connection.Close()
 	p.parent.remPipe(p)
 
 	pipeID.Recycle(p.id)
@@ -77,74 +73,29 @@ func (p *pipe) Close() error {
 	return nil
 }
 
-func (p *pipe) Send(msg []byte, extras ...[]byte) (err error) {
-	return p.SendTimeout(p.sendTimeout, msg, extras...)
-}
-
-func (p *pipe) SendTimeout(timeout time.Duration, msg []byte, extras ...[]byte) (err error) {
-	if timeout <= 0 {
-		if err = p.c.Send(msg, extras...); err != nil {
-			// NOTE: close on any error
+func (p *pipe) Read(b []byte) (n int, err error) {
+	if n, err = p.Connection.Read(b); err != nil {
+		if err == io.EOF {
+			if n > 0 {
+				err = nil
+			} else if p.closeOnEOF {
+				p.Close()
+				err = errs.ErrClosed
+			}
+		} else {
 			if errx := p.Close(); errx != nil {
 				err = errx
 			}
 		}
-		return
-	}
-
-	tm := time.NewTimer(timeout)
-	done := make(chan struct{})
-
-	go func() {
-		err = p.SendTimeout(0, msg, extras...)
-		done <- struct{}{}
-	}()
-	select {
-	case <-tm.C:
-		p.Close()
-		err = errs.ErrTimeout
-	case <-done:
-		tm.Stop()
 	}
 	return
 }
 
-func (p *pipe) Recv() (msg []byte, err error) {
-	return p.RecvTimeout(p.recvTimeout)
-}
-
-func (p *pipe) RecvTimeout(timeout time.Duration) (msg []byte, err error) {
-	if timeout <= 0 {
-		if msg, err = p.c.Recv(); err != nil {
-			if err == io.EOF {
-				if len(msg) > 0 {
-					err = nil
-				} else if p.closeOnEOF {
-					p.Close()
-					err = errs.ErrClosed
-				}
-			} else {
-				if errx := p.Close(); errx != nil {
-					err = errx
-				}
-			}
+func (p *pipe) Write(b []byte) (n int, err error) {
+	if n, err = p.Connection.Write(b); err != nil {
+		if errx := p.Close(); errx != nil {
+			err = errx
 		}
-		return
-	}
-
-	tm := time.NewTimer(timeout)
-	done := make(chan struct{})
-	go func() {
-		msg, err = p.RecvTimeout(0)
-		done <- struct{}{}
-	}()
-
-	select {
-	case <-tm.C:
-		go p.Close()
-		err = errs.ErrTimeout
-	case <-done:
-		tm.Stop()
 	}
 	return
 }

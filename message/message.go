@@ -1,9 +1,14 @@
 package message
 
 import (
-	"bytes"
 	"encoding/binary"
+	"io"
+	"sync"
 	"unsafe"
+
+	"github.com/webee/multisocket/errs"
+
+	"github.com/webee/multisocket/bytespool"
 )
 
 const (
@@ -15,10 +20,11 @@ type (
 	// MsgHeader message meta data
 	MsgHeader struct {
 		// Flags
-		Flags    uint8 // 6:other flags|2:send type to/one,all,dest
-		TTL      uint8 // time to live
-		Hops     uint8 // node count from origin
-		Distance uint8 // node count to destination
+		Flags    uint8  // 6:other flags|2:send type to/one,all,dest
+		TTL      uint8  // time to live
+		Hops     uint8  // node count from origin
+		Distance uint8  // node count to destination
+		Length   uint32 // content length
 	}
 
 	// MsgPath is message's path composed of pipe ids(uint32) traceback.
@@ -26,18 +32,30 @@ type (
 
 	// Message is a message
 	Message struct {
-		Header      *MsgHeader
+		Header      MsgHeader
+		buf         []byte
 		Source      MsgPath
 		Destination MsgPath
 		Content     []byte
-		Extras      [][]byte
 	}
 
-	// TODO:
+	// TODO: use internal message
+
 	// InternalMsg internal message content structure.
 	InternalMsg struct {
 		Type uint8
 		// others
+	}
+)
+
+var (
+	// MsgHeaderSize is the MsgHeader's memory byte size.
+	MsgHeaderSize = int(unsafe.Sizeof(MsgHeader{}))
+	emptyHeader   = MsgHeader{
+		TTL: DefaultMsgTTL,
+	}
+	msgPool = &sync.Pool{
+		New: func() interface{} { return &Message{} },
 	}
 )
 
@@ -95,7 +113,7 @@ func (h *MsgHeader) ClearFlags(flags uint8) uint8 {
 
 // Size get Header byte size.
 func (h *MsgHeader) Size() int {
-	return int(unsafe.Sizeof(*h))
+	return MsgHeaderSize
 }
 
 // DestLength get distance length
@@ -103,11 +121,34 @@ func (h *MsgHeader) DestLength() int {
 	return int(h.Distance)
 }
 
-// Encode Header to bytes
+// Encode header to bytes
 func (h *MsgHeader) Encode() []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, h)
-	return buf.Bytes()
+	b := bytespool.Alloc(MsgHeaderSize)
+	b[0] = h.Flags
+	b[1] = h.TTL
+	b[2] = h.Hops
+	b[3] = h.Distance
+	binary.BigEndian.PutUint32(b[4:], h.Length)
+
+	return b
+}
+
+// decodeHeader from reader
+func decodeHeader(r io.Reader, h *MsgHeader) (err error) {
+	b := bytespool.Alloc(MsgHeaderSize)
+	if _, err = io.ReadFull(r, b); err != nil {
+		// free
+		bytespool.Free(b)
+		return
+	}
+	h.Flags = b[0]
+	h.TTL = b[1]
+	h.Hops = b[2]
+	h.Distance = b[3]
+	h.Length = binary.BigEndian.Uint32(b[4:])
+	// free
+	bytespool.Free(b)
+	return nil
 }
 
 // Size get Path byte size
@@ -120,83 +161,203 @@ func (path MsgPath) Length() uint8 {
 	return uint8(len(path) / 4)
 }
 
-// Encode Source to bytes
-func (path MsgPath) Encode() []byte {
-	return path
-}
-
 // CurID get source's current pipe id.
 func (path MsgPath) CurID() (id uint32, ok bool) {
-	if len(path) < 4 {
+	l := len(path)
+	if l < 4 {
 		return
 	}
-	id = binary.BigEndian.Uint32(path)
+	id = binary.BigEndian.Uint32(path[l-4:])
 	ok = true
 	return
 }
 
-// AddID add the new pipe id to head.
-func (path MsgPath) AddID(id uint32) (source MsgPath) {
-	source = append(make([]byte, 4), path...)
-	binary.BigEndian.PutUint32(source, id)
-	return
-}
-
-// AddSource add the new pipe id to head.
-func (path MsgPath) AddSource(id [4]byte) (source MsgPath) {
-	source = append(id[:4], path...)
-	return
+// AddSource add the new pipe id to tail.
+func (path MsgPath) AddSource(id [4]byte) MsgPath {
+	return append(path, id[:4]...)
 }
 
 // NextID get source's next pipe id and remain source.
 func (path MsgPath) NextID() (id uint32, source MsgPath, ok bool) {
-	if len(path) < 4 {
+	l := len(path)
+	if l < 4 {
 		source = path
 		return
 	}
-	id = binary.BigEndian.Uint32(path)
-	source = path[4:]
+	id = binary.BigEndian.Uint32(path[l-4:])
+	source = path[:l-4]
 	ok = true
 	return
 }
 
-// NewMessage create a message
-func NewMessage(sendType uint8, dest MsgPath, flags uint8, content []byte, extras ...[]byte) *Message {
-	header := &MsgHeader{Flags: flags | sendType, TTL: DefaultMsgTTL}
-	if sendType == SendTypeToDest {
-		header.Distance = dest.Length()
+// NewMessageFromReader create a message from reader
+func NewMessageFromReader(pid uint32, r io.Reader, maxLength uint32) (msg *Message, err error) {
+	var (
+		header     *MsgHeader
+		sourceSize int
+		destSize   int
+		length     int
+	)
+	msg = msgPool.Get().(*Message)
+	header = &msg.Header
+
+	if err = decodeHeader(r, header); err != nil {
+		msg.FreeAll()
+		msg = nil
+		// err = errs.ErrBadMsg
+		return
 	}
-	return &Message{
-		Header:      header,
-		Destination: dest,
-		Content:     content,
-		Extras:      extras,
+	if maxLength != 0 && header.Length > maxLength {
+		msg.FreeAll()
+		msg = nil
+		err = errs.ErrContentTooLong
+		return
 	}
+
+	sendType := header.SendType()
+
+	sourceSize = 4 * int(header.Hops)
+	destSize = 4 * int(header.Distance)
+	length = int(header.Length)
+	msg.buf = bytespool.Alloc(sourceSize + 4 + destSize + length)
+	// Source
+	msg.Source = msg.buf[: sourceSize+4 : sourceSize+4]
+	if _, err = io.ReadFull(r, msg.Source[:sourceSize]); err != nil {
+		msg.FreeAll()
+		msg = nil
+		return
+	}
+	// update source, add current pipe id
+	binary.BigEndian.PutUint32(msg.Source[sourceSize:], pid)
+	header.Hops++
+	header.TTL--
+
+	if sendType == SendTypeToDest && header.Distance > 0 {
+		destSize = 4 * int(header.Distance)
+		if destSize > 0 {
+			msg.Destination = msg.buf[sourceSize+4 : sourceSize+4+destSize : sourceSize+4+destSize]
+			if _, err = io.ReadFull(r, msg.Destination); err != nil {
+				msg.FreeAll()
+				msg = nil
+				return
+			}
+		}
+	}
+
+	msg.Content = msg.buf[sourceSize+4+destSize : sourceSize+4+destSize+length : sourceSize+4+destSize+length]
+	if _, err = io.ReadFull(r, msg.Content); err != nil {
+		msg.FreeAll()
+		msg = nil
+		return
+	}
+
+	return
 }
 
-// Encode encode msg to bytes.
-func (msg *Message) Encode() [][]byte {
-	res := make([][]byte, 4+len(msg.Extras))
-	res[0] = msg.Header.Encode()
-	res[1] = msg.Source.Encode()
-	res[2] = msg.Destination.Encode()
-	res[3] = msg.Content
-	for i := 4; i < len(res); i++ {
-		res[i] = msg.Extras[i-4]
+// NewRecvMessage create a new recv message
+func NewRecvMessage(pid uint32, sendType uint8, dest MsgPath, flags uint8, ttl uint8, content []byte) *Message {
+	if ttl <= 0 {
+		ttl = DefaultMsgTTL
+	}
+	msg := msgPool.Get().(*Message)
+	msg.Header = MsgHeader{
+		Flags:    flags | sendType,
+		TTL:      ttl,
+		Distance: dest.Length(),
+		Length:   uint32(len(content)),
+	}
+	header := &msg.Header
+
+	sourceSize := 4
+	destSize := len(dest)
+	length := len(content)
+
+	msg.buf = bytespool.Alloc(sourceSize + destSize + length)
+	// Source
+	msg.Source = msg.buf[:sourceSize:sourceSize]
+	// update source, add current pipe id
+	binary.BigEndian.PutUint32(msg.Source, pid)
+	header.Hops++
+	header.TTL--
+
+	if sendType == SendTypeToDest && header.Distance > 0 {
+		msg.Destination = msg.buf[sourceSize : sourceSize+destSize : sourceSize+destSize]
+		copy(msg.Destination, dest)
 	}
 
-	return res
+	if content != nil {
+		// nil raw message is EOF
+		msg.Content = msg.buf[sourceSize+destSize : sourceSize+destSize+length : sourceSize+destSize+length]
+		copy(msg.Content, content)
+	}
+
+	return msg
+}
+
+// NewMessage create a message
+func NewMessage(sendType uint8, dest MsgPath, flags uint8, ttl uint8, content []byte) *Message {
+	if ttl <= 0 {
+		ttl = DefaultMsgTTL
+	}
+	msg := msgPool.Get().(*Message)
+	msg.Header = MsgHeader{
+		Flags:    flags | sendType,
+		TTL:      ttl,
+		Distance: dest.Length(),
+		Length:   uint32(len(content)),
+	}
+
+	destSize := len(dest)
+	length := len(content)
+
+	msg.buf = bytespool.Alloc(destSize + length)
+
+	if sendType == SendTypeToDest && msg.Header.Distance > 0 {
+		msg.Destination = msg.buf[:destSize:destSize]
+		copy(msg.Destination, dest)
+	}
+
+	msg.Content = msg.buf[destSize : destSize+length : destSize+length]
+	copy(msg.Content, content)
+
+	return msg
+}
+
+// Dup create a duplicated message
+// TODO: try effective way, like reference counting.
+func (msg *Message) Dup() (dup *Message) {
+	dup = msgPool.Get().(*Message)
+	dup.Header = msg.Header
+
+	dup.buf = bytespool.Alloc(cap(msg.buf))
+	copy(dup.buf, msg.buf)
+	sourceSize := 4 * int(dup.Header.Hops)
+	destSize := 4 * int(dup.Header.Distance)
+	length := int(dup.Header.Length)
+
+	dup.Source = dup.buf[:sourceSize:sourceSize]
+	dup.Destination = dup.buf[sourceSize : sourceSize+destSize : destSize]
+	dup.Content = dup.buf[sourceSize+destSize : sourceSize+destSize+length : length]
+
+	return dup
+}
+
+// FreeAll put msg and buf to pools
+func (msg *Message) FreeAll() {
+	bytespool.Free(msg.buf)
+
+	msg.buf = nil
+	msg.Header = emptyHeader
+	msg.Source = nil
+	msg.Destination = nil
+	msg.Content = nil
+	msgPool.Put(msg)
 }
 
 // AddSource add pipe id to msg source
 func (msg *Message) AddSource(id [4]byte) {
 	msg.Source = msg.Source.AddSource(id)
 	msg.Header.Hops++
-}
-
-// HasDestination check if msg has a destination
-func (msg *Message) HasDestination() bool {
-	return msg.Header.SendType() == SendTypeToDest || msg.Destination.Length() > 0
 }
 
 // PipeID get this message's source pipe id.

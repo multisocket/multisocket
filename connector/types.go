@@ -1,24 +1,22 @@
 package connector
 
 import (
-	"time"
-
 	"github.com/webee/multisocket/options"
 )
 
 type (
 	// Pipe is a connection between two peers.
 	Pipe interface {
+		options.Options
+
 		ID() uint32
 		LocalAddress() string
 		RemoteAddress() string
 
 		IsRaw() bool
 
-		Send(msg []byte, extras ...[]byte) error
-		SendTimeout(deadline time.Duration, msg []byte, extras ...[]byte) error
-		Recv() ([]byte, error)
-		RecvTimeout(deadline time.Duration) ([]byte, error)
+		Read(b []byte) (n int, err error)
+		Write(b []byte) (n int, err error)
 
 		Close() error
 	}

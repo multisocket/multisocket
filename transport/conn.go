@@ -1,26 +1,15 @@
 package transport
 
 import (
-	"encoding/binary"
 	"fmt"
-	"io"
 	"net"
-	"sync"
-
-	"github.com/webee/multisocket/errs"
-	"github.com/webee/multisocket/options"
 )
 
 type (
 	// connection implements the Connection interface on top of net.Conn.
 	connection struct {
 		transport Transport
-		raw       bool
-		c         PrimitiveConnection
-		maxrx     uint32
-
-		sync.Mutex
-		closed bool
+		PrimitiveConnection
 	}
 
 	// PrimitiveConnection is primitive connection made by transport.
@@ -49,85 +38,12 @@ func (conn *connection) Transport() Transport {
 	return conn.transport
 }
 
-func (conn *connection) IsRaw() bool {
-	return conn.raw
-}
-
-// Recv implements the TranPipe Recv method.  The message received is expected
-// as a 32-bit size (network byte order) followed by the message itself.
-func (conn *connection) Recv() (msg []byte, err error) {
-	var sz uint32
-
-	if err = binary.Read(conn.c, binary.BigEndian, &sz); err != nil {
-		return
-	}
-
-	if conn.maxrx > 0 && sz > conn.maxrx {
-		err = errs.ErrMsgTooLong
-		return
-	}
-
-	// FIXME: bytes pool
-	msg = make([]byte, sz)
-	if _, err = io.ReadFull(conn.c, msg); err != nil {
-		return
-	}
-	return
-}
-
-// Send implements the Pipe Send method.  The message is sent as a 32-bit
-// size (network byte order) followed by the message itself.
-func (conn *connection) Send(msg []byte, extras ...[]byte) (err error) {
-	var (
-		buff = net.Buffers{}
-		sz   uint32
-	)
-
-	sz = uint32(len(msg))
-	// Serialize the length header
-	for _, m := range extras {
-		sz += uint32(len(m))
-	}
-	lbyte := make([]byte, 4)
-	binary.BigEndian.PutUint32(lbyte, sz)
-
-	// Attach the length header along with the actual header and body
-	buff = append(buff, lbyte)
-	if len(msg) > 0 {
-		buff = append(buff, msg)
-	}
-	for _, ex := range extras {
-		if len(ex) > 0 {
-			buff = append(buff, ex)
-		}
-	}
-
-	if _, err := buff.WriteTo(conn.c); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Close implements the Pipe Close method.
-func (conn *connection) Close() error {
-	conn.Lock()
-	if conn.closed {
-		conn.Unlock()
-		return nil
-	}
-	conn.closed = true
-	conn.Unlock()
-
-	return conn.c.Close()
-}
-
 func (conn *connection) LocalAddress() string {
-	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.c.LocalAddress())
+	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.PrimitiveConnection.LocalAddress())
 }
 
 func (conn *connection) RemoteAddress() string {
-	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.c.RemoteAddress())
+	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.PrimitiveConnection.RemoteAddress())
 }
 
 // NewPrimitiveConn convert net.Conn to PrimitiveConnection
@@ -135,19 +51,12 @@ func NewPrimitiveConn(c net.Conn) PrimitiveConnection {
 	return &primitiveConn{c}
 }
 
-// NewConnection allocates a new Connection using the supplied net.Conn
-func NewConnection(opts options.Options, transport Transport, pc PrimitiveConnection) (Connection, error) {
-	if Options.RawMode.ValueFrom(opts) {
-		return newRawConnection(transport, pc, opts)
-	}
-
+// NewConnection allocates a new Connection using the PrimitiveConnection
+func NewConnection(transport Transport, pc PrimitiveConnection) (Connection, error) {
 	conn := &connection{
-		transport: transport,
-		raw:       false,
-		c:         pc,
+		transport:           transport,
+		PrimitiveConnection: pc,
 	}
-
-	conn.maxrx = Options.MaxRecvMsgSize.ValueFrom(opts)
 
 	return conn, nil
 }

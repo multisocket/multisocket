@@ -16,8 +16,8 @@ type (
 	}
 
 	pipeOptions struct {
-		SendTimeout options.TimeDurationOption
-		RecvTimeout options.TimeDurationOption
+		RawMode        options.BoolOption
+		RawRecvBufSize options.IntOption
 		// close pipe when peer shutdown write(half-close)
 		CloseOnEOF options.BoolOption
 	}
@@ -42,9 +42,9 @@ var (
 			DialAsync:        options.NewBoolOption(false),
 		},
 		Pipe: pipeOptions{
-			SendTimeout: options.NewTimeDurationOption(time.Duration(0)),
-			RecvTimeout: options.NewTimeDurationOption(time.Duration(0)),
-			CloseOnEOF:  options.NewBoolOption(true),
+			RawMode:        options.NewBoolOption(false),
+			RawRecvBufSize: options.NewIntOption(4 * 1024),
+			CloseOnEOF:     options.NewBoolOption(true),
 		},
 	}
 )

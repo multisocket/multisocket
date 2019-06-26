@@ -27,7 +27,7 @@ func (d *dialer) Dial(opts options.Options) (transport.Pipe, error) {
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewConnection(opts, Transport, transport.NewPrimitiveConn(conn))
+	return transport.NewConnection(Transport, transport.NewPrimitiveConn(conn))
 }
 
 func (l *listener) Listen(opts options.Options) error {
@@ -69,7 +69,7 @@ func (l *listener) Accept(opts options.Options) (mangos.TranPipe, error) {
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewConnection(opts, Transport, transport.NewPrimitiveConn(conn))
+	return transport.NewConnection(Transport, transport.NewPrimitiveConn(conn))
 }
 
 func (l *listener) Close() error {

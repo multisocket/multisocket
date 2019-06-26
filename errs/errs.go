@@ -15,5 +15,5 @@ const (
 	ErrOperationNotSupported = Err("operation not supported")
 	ErrBadTransport          = Err("invalid or unsupported transport")
 	ErrBadMsg                = Err("bad message")
-	ErrMsgTooLong            = Err("message is too long")
+	ErrContentTooLong        = Err("content is too long")
 )

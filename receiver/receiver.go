@@ -4,6 +4,10 @@ import (
 	"io"
 	"sync"
 
+	"github.com/webee/multisocket/connector"
+
+	"github.com/webee/multisocket/bytespool"
+
 	"github.com/webee/multisocket/errs"
 
 	log "github.com/sirupsen/logrus"
@@ -23,7 +27,9 @@ type (
 	}
 
 	pipe struct {
-		p Pipe
+		p                    Pipe
+		rawRecvBufSize       int
+		maxRecvContentLength uint32
 	}
 )
 
@@ -61,83 +67,34 @@ func (r *receiver) onOptionChange(opt options.Option, oldVal, newVal interface{}
 }
 
 func newPipe(p Pipe) *pipe {
-	return &pipe{p}
+	return &pipe{
+		p:              p,
+		rawRecvBufSize: p.GetOptionDefault(connector.Options.Pipe.RawRecvBufSize).(int),
+	}
 }
 
 func (p *pipe) recvMsg() (msg *Message, err error) {
-	var (
-		ok      bool
-		payload []byte
-		header  *MsgHeader
-		source  MsgPath
-		dest    MsgPath
-	)
-	if payload, err = p.p.Recv(); err != nil {
-		return
-	}
-
-	if header, err = newHeaderFromBytes(payload); err != nil {
-		return
-	}
-	sendType := header.SendType()
-	headerSize := header.Size()
-
-	source = newPathFromBytes(int(header.Hops), payload[headerSize:])
-	sourceSize := source.Size()
-
-	if sendType == SendTypeToDest {
-		dest = newPathFromBytes(header.DestLength(), payload[headerSize+sourceSize:])
-	}
-
-	content := payload[headerSize+sourceSize+dest.Size():]
-
-	// update source, add current pipe id
-	source = source.AddID(p.p.ID())
-	header.Hops++
-	header.TTL--
-
-	if sendType == SendTypeToDest {
-		// update destination, remove last pipe id
-		if _, dest, ok = dest.NextID(); !ok {
-			// anyway, msg arrived
-			header.Distance = 0
-		} else {
-			header.Distance = dest.Length()
-		}
-	}
-
-	msg = &Message{
-		Header:      header,
-		Source:      source,
-		Destination: dest,
-		Content:     content,
-	}
-	return
+	return message.NewMessageFromReader(p.p.ID(), p.p, p.maxRecvContentLength)
 }
 
-func newRawMsg(pipeID uint32, content []byte) *message.Message {
+func newRawMsg(pid uint32, content []byte) *message.Message {
 	// raw message is always send to one.
-	msg := message.NewMessage(SendTypeToOne, nil, message.MsgFlagRaw, content)
-	// update source, add current pipe id
-	msg.Source = msg.Source.AddID(pipeID)
-	msg.Header.Hops = msg.Source.Length()
-	return msg
+	return message.NewRecvMessage(pid, SendTypeToOne, nil, message.MsgFlagRaw, 0, content)
 }
 
 func (p *pipe) recvRawMsg() (msg *Message, err error) {
-	var (
-		payload []byte
-	)
-	if payload, err = p.p.Recv(); err != nil {
+	var n int
+	b := bytespool.Alloc(p.rawRecvBufSize)
+	if n, err = p.p.Read(b); err != nil {
 		if err == io.EOF {
-			// nil content as EOF signal
+			// use nil represents EOF
 			msg = newRawMsg(p.p.ID(), nil)
 		}
-		return
+	} else {
+		msg = newRawMsg(p.p.ID(), b[:n])
 	}
-
-	msg = newRawMsg(p.p.ID(), payload)
-
+	// free
+	bytespool.Free(b)
 	return
 }
 
@@ -151,11 +108,15 @@ func (r *receiver) AttachConnector(connector Connector) {
 
 // options
 func (r *receiver) recvQueueSize() uint16 {
-	return Options.RecvQueueSize.ValueFrom(r.Options)
+	return r.GetOptionDefault(Options.RecvQueueSize).(uint16)
 }
 
 func (r *receiver) noRecv() bool {
-	return Options.NoRecv.ValueFrom(r.Options)
+	return r.GetOptionDefault(Options.NoRecv).(bool)
+}
+
+func (r *receiver) maxRecvContentLength() uint32 {
+	return r.GetOptionDefault(Options.MaxRecvContentLength).(uint32)
 }
 
 func (r *receiver) HandlePipeEvent(e PipeEvent, pipe Pipe) {
@@ -169,10 +130,11 @@ func (r *receiver) HandlePipeEvent(e PipeEvent, pipe Pipe) {
 
 func (r *receiver) addPipe(pipe Pipe) {
 	r.Lock()
-	defer r.Unlock()
 	p := newPipe(pipe)
+	p.maxRecvContentLength = r.maxRecvContentLength()
 	r.pipes[p.p.ID()] = p
 	go r.run(p)
+	r.Unlock()
 }
 
 func (r *receiver) remPipe(id uint32) {
@@ -261,7 +223,9 @@ func (r *receiver) Recv() (content []byte, err error) {
 	if msg, err = r.RecvMsg(); err != nil {
 		return
 	}
-	content = msg.Content
+	content = bytespool.Alloc(len(msg.Content))
+	copy(content, msg.Content)
+	msg.FreeAll()
 	return
 }
 

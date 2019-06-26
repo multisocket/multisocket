@@ -17,10 +17,10 @@ type (
 
 	// SenderAction is sender's action
 	SenderAction interface {
-		SendTo(dest MsgPath, content []byte, extras ...[]byte) error // for reply send
-		Send(content []byte, extras ...[]byte) error                 // for initiative send one
-		SendAll(content []byte, extras ...[]byte) error              // for initiative send all
-		SendMsg(msg *Message) error
+		Send(content []byte) error                 // for initiative send one
+		SendTo(dest MsgPath, content []byte) error // for reply send
+		SendAll(content []byte) error              // for initiative send all
+		SendMsg(msg *Message) error                // for forward message
 	}
 
 	// Sender controls socket's send.

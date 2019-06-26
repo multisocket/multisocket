@@ -39,19 +39,19 @@ func newDialer(parent *connector, addr string, td transport.Dialer, ovs options.
 
 //options
 func (d *dialer) minReconnectTime() time.Duration {
-	return Options.Dialer.MinReconnectTime.ValueFrom(d)
+	return d.GetOptionDefault(Options.Dialer.MinReconnectTime).(time.Duration)
 }
 
 func (d *dialer) maxReconnectTime() time.Duration {
-	return Options.Dialer.MaxReconnectTime.ValueFrom(d)
+	return d.GetOptionDefault(Options.Dialer.MaxReconnectTime).(time.Duration)
 }
 
 func (d *dialer) dialAsync() bool {
-	return Options.Dialer.DialAsync.ValueFrom(d)
+	return d.GetOptionDefault(Options.Dialer.DialAsync).(bool)
 }
 
 func (d *dialer) reconnect() bool {
-	return Options.Dialer.Reconnect.ValueFrom(d)
+	return d.GetOptionDefault(Options.Dialer.Reconnect).(bool)
 }
 
 func (d *dialer) Dial() error {
@@ -171,13 +171,13 @@ func (d *dialer) dial(redial bool) error {
 	d.Unlock()
 
 	if log.IsLevelEnabled(log.DebugLevel) {
-		raw := transport.Options.RawMode.ValueFrom(d.Options)
+		raw := Options.Pipe.RawMode.ValueFrom(d.Options)
 		log.WithFields(log.Fields{"addr": d.addr, "action": "start", "raw": raw}).Debug("dial")
 	}
 	tc, err := d.d.Dial(d.Options)
 	if err == nil {
 		if log.IsLevelEnabled(log.DebugLevel) {
-			raw := transport.Options.RawMode.ValueFrom(d.Options)
+			raw := Options.Pipe.RawMode.ValueFrom(d.Options)
 			log.WithFields(log.Fields{"addr": d.addr, "action": "success", "raw": raw}).Debug("dial")
 		}
 		d.parent.addPipe(newPipe(d.parent, tc, d, nil, d.Options))
@@ -190,7 +190,7 @@ func (d *dialer) dial(redial bool) error {
 		return nil
 	}
 	if log.IsLevelEnabled(log.DebugLevel) {
-		raw := transport.Options.RawMode.ValueFrom(d.Options)
+		raw := Options.Pipe.RawMode.ValueFrom(d.Options)
 		log.WithError(err).WithFields(log.Fields{"addr": d.addr, "action": "failed", "raw": raw}).Error("dial")
 	}
 

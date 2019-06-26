@@ -8,11 +8,9 @@ type (
 	// Connection is connection between peers.
 	Connection interface {
 		Transport() Transport
-		IsRaw() bool
 
-		Send(msg []byte, extras ...[]byte) error
-		Recv() ([]byte, error)
-
+		Read(b []byte) (n int, err error)
+		Write(b []byte) (n int, err error)
 		Close() error
 
 		LocalAddress() string
