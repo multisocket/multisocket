@@ -3,6 +3,7 @@ package message
 import (
 	"encoding/binary"
 	"io"
+	"io/ioutil"
 	"sync"
 	"unsafe"
 
@@ -162,14 +163,8 @@ func (path MsgPath) Length() uint8 {
 }
 
 // CurID get source's current pipe id.
-func (path MsgPath) CurID() (id uint32, ok bool) {
-	l := len(path)
-	if l < 4 {
-		return
-	}
-	id = binary.BigEndian.Uint32(path[l-4:])
-	ok = true
-	return
+func (path MsgPath) CurID() uint32 {
+	return binary.BigEndian.Uint32(path[len(path)-4:])
 }
 
 // AddSource add the new pipe id to tail.
@@ -178,20 +173,15 @@ func (path MsgPath) AddSource(id [4]byte) MsgPath {
 }
 
 // NextID get source's next pipe id and remain source.
-func (path MsgPath) NextID() (id uint32, source MsgPath, ok bool) {
+func (path MsgPath) NextID() (id uint32, source MsgPath) {
 	l := len(path)
-	if l < 4 {
-		source = path
-		return
-	}
 	id = binary.BigEndian.Uint32(path[l-4:])
 	source = path[:l-4]
-	ok = true
 	return
 }
 
 // NewMessageFromReader create a message from reader
-func NewMessageFromReader(pid uint32, r io.Reader, maxLength uint32) (msg *Message, err error) {
+func NewMessageFromReader(pid uint32, r io.ReadCloser, maxLength uint32) (msg *Message, err error) {
 	var (
 		header     *MsgHeader
 		sourceSize int
@@ -210,41 +200,50 @@ func NewMessageFromReader(pid uint32, r io.Reader, maxLength uint32) (msg *Messa
 	if maxLength != 0 && header.Length > maxLength {
 		msg.FreeAll()
 		msg = nil
+		r.Close()
 		err = errs.ErrContentTooLong
 		return
 	}
 
-	sendType := header.SendType()
-
-	sourceSize = 4 * int(header.Hops)
-	destSize = 4 * int(header.Distance)
+	sourceSize = 4 * int(header.Hops+1)
+	if header.Distance > 0 {
+		destSize = 4 * int(header.Distance-1)
+	}
 	length = int(header.Length)
-	msg.buf = bytespool.Alloc(sourceSize + 4 + destSize + length)
+	msg.buf = bytespool.Alloc(sourceSize + destSize + length)
 	// Source
-	msg.Source = msg.buf[: sourceSize+4 : sourceSize+4]
-	if _, err = io.ReadFull(r, msg.Source[:sourceSize]); err != nil {
+	msg.Source = msg.buf[:sourceSize:sourceSize]
+	if _, err = io.ReadFull(r, msg.Source[:sourceSize-4]); err != nil {
 		msg.FreeAll()
 		msg = nil
 		return
 	}
 	// update source, add current pipe id
-	binary.BigEndian.PutUint32(msg.Source[sourceSize:], pid)
+	binary.BigEndian.PutUint32(msg.Source[sourceSize-4:], pid)
 	header.Hops++
 	header.TTL--
 
-	if sendType == SendTypeToDest && header.Distance > 0 {
-		destSize = 4 * int(header.Distance)
+	// Destination
+	if header.Distance > 0 {
 		if destSize > 0 {
-			msg.Destination = msg.buf[sourceSize+4 : sourceSize+4+destSize : sourceSize+4+destSize]
+			msg.Destination = msg.buf[sourceSize : sourceSize+destSize : sourceSize+destSize]
 			if _, err = io.ReadFull(r, msg.Destination); err != nil {
 				msg.FreeAll()
 				msg = nil
 				return
 			}
 		}
+		// previous node's sender's pipe id
+		if _, err = io.CopyN(ioutil.Discard, r, 4); err != nil {
+			msg.FreeAll()
+			msg = nil
+			return
+		}
+		header.Distance--
 	}
 
-	msg.Content = msg.buf[sourceSize+4+destSize : sourceSize+4+destSize+length : sourceSize+4+destSize+length]
+	// Content
+	msg.Content = msg.buf[sourceSize+destSize : sourceSize+destSize+length : sourceSize+destSize+length]
 	if _, err = io.ReadFull(r, msg.Content); err != nil {
 		msg.FreeAll()
 		msg = nil
@@ -254,25 +253,22 @@ func NewMessageFromReader(pid uint32, r io.Reader, maxLength uint32) (msg *Messa
 	return
 }
 
-// NewRecvMessage create a new recv message
-func NewRecvMessage(pid uint32, sendType uint8, dest MsgPath, flags uint8, ttl uint8, content []byte) *Message {
-	if ttl <= 0 {
-		ttl = DefaultMsgTTL
-	}
+// NewRawRecvMessage create a new raw recv message
+func NewRawRecvMessage(pid uint32, content []byte) *Message {
+	// raw message is always send to one.
 	msg := msgPool.Get().(*Message)
 	msg.Header = MsgHeader{
-		Flags:    flags | sendType,
-		TTL:      ttl,
-		Distance: dest.Length(),
+		Flags:    MsgFlagRaw | SendTypeToOne,
+		TTL:      DefaultMsgTTL,
+		Distance: 0,
 		Length:   uint32(len(content)),
 	}
 	header := &msg.Header
 
 	sourceSize := 4
-	destSize := len(dest)
 	length := len(content)
 
-	msg.buf = bytespool.Alloc(sourceSize + destSize + length)
+	msg.buf = bytespool.Alloc(sourceSize + length)
 	// Source
 	msg.Source = msg.buf[:sourceSize:sourceSize]
 	// update source, add current pipe id
@@ -280,22 +276,17 @@ func NewRecvMessage(pid uint32, sendType uint8, dest MsgPath, flags uint8, ttl u
 	header.Hops++
 	header.TTL--
 
-	if sendType == SendTypeToDest && header.Distance > 0 {
-		msg.Destination = msg.buf[sourceSize : sourceSize+destSize : sourceSize+destSize]
-		copy(msg.Destination, dest)
-	}
-
 	if content != nil {
 		// nil raw message is EOF
-		msg.Content = msg.buf[sourceSize+destSize : sourceSize+destSize+length : sourceSize+destSize+length]
+		msg.Content = msg.buf[sourceSize : sourceSize+length : sourceSize+length]
 		copy(msg.Content, content)
 	}
 
 	return msg
 }
 
-// NewMessage create a message
-func NewMessage(sendType uint8, dest MsgPath, flags uint8, ttl uint8, content []byte) *Message {
+// NewSendMessage create a message to send
+func NewSendMessage(sendType uint8, dest MsgPath, flags uint8, ttl uint8, content []byte) *Message {
 	if ttl <= 0 {
 		ttl = DefaultMsgTTL
 	}
@@ -312,7 +303,7 @@ func NewMessage(sendType uint8, dest MsgPath, flags uint8, ttl uint8, content []
 
 	msg.buf = bytespool.Alloc(destSize + length)
 
-	if sendType == SendTypeToDest && msg.Header.Distance > 0 {
+	if msg.Header.Distance > 0 {
 		msg.Destination = msg.buf[:destSize:destSize]
 		copy(msg.Destination, dest)
 	}
@@ -321,6 +312,11 @@ func NewMessage(sendType uint8, dest MsgPath, flags uint8, ttl uint8, content []
 	copy(msg.Content, content)
 
 	return msg
+}
+
+// EncodeBody encode msg'b body parts.
+func (msg *Message) EncodeBody() []byte {
+	return msg.buf
 }
 
 // Dup create a duplicated message
@@ -336,8 +332,8 @@ func (msg *Message) Dup() (dup *Message) {
 	length := int(dup.Header.Length)
 
 	dup.Source = dup.buf[:sourceSize:sourceSize]
-	dup.Destination = dup.buf[sourceSize : sourceSize+destSize : destSize]
-	dup.Content = dup.buf[sourceSize+destSize : sourceSize+destSize+length : length]
+	dup.Destination = dup.buf[sourceSize : sourceSize+destSize : sourceSize+destSize]
+	dup.Content = dup.buf[sourceSize+destSize : sourceSize+destSize+length : sourceSize+destSize+length]
 
 	return dup
 }
@@ -361,7 +357,6 @@ func (msg *Message) AddSource(id [4]byte) {
 }
 
 // PipeID get this message's source pipe id.
-func (msg *Message) PipeID() (id uint32) {
-	id, _ = msg.Source.CurID()
-	return
+func (msg *Message) PipeID() uint32 {
+	return msg.Source.CurID()
 }

@@ -19,6 +19,7 @@ type (
 	ReceiverAction interface {
 		RecvMsg() (*Message, error)
 		Recv() ([]byte, error)
+		// RecvContent()(*Content, error) // can free
 	}
 
 	// Receiver controls socket's recv.

@@ -77,21 +77,16 @@ func (p *pipe) recvMsg() (msg *Message, err error) {
 	return message.NewMessageFromReader(p.p.ID(), p.p, p.maxRecvContentLength)
 }
 
-func newRawMsg(pid uint32, content []byte) *message.Message {
-	// raw message is always send to one.
-	return message.NewRecvMessage(pid, SendTypeToOne, nil, message.MsgFlagRaw, 0, content)
-}
-
 func (p *pipe) recvRawMsg() (msg *Message, err error) {
 	var n int
 	b := bytespool.Alloc(p.rawRecvBufSize)
 	if n, err = p.p.Read(b); err != nil {
 		if err == io.EOF {
 			// use nil represents EOF
-			msg = newRawMsg(p.p.ID(), nil)
+			msg = message.NewRawRecvMessage(p.p.ID(), nil)
 		}
 	} else {
-		msg = newRawMsg(p.p.ID(), b[:n])
+		msg = message.NewRawRecvMessage(p.p.ID(), b[:n])
 	}
 	// free
 	bytespool.Free(b)
@@ -156,9 +151,7 @@ func (r *receiver) run(p *pipe) {
 
 		// NOTE:
 		// send a empty message to make a connection
-		msg := newRawMsg(p.p.ID(), emptyByteSlice)
-
-		r.recvq <- msg
+		r.recvq <- message.NewRawRecvMessage(p.p.ID(), emptyByteSlice)
 	}
 
 	var (

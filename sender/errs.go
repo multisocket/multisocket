@@ -7,7 +7,6 @@ import (
 // errors
 const (
 	ErrMsgDropped      = errs.Err("message dropped")
-	ErrBadDestination  = errs.Err("bad destination")
-	ErrBrokenPath      = errs.Err("broken path")
+	ErrBrokenPath      = errs.Err("bad destination: broken path")
 	ErrInvalidSendType = errs.Err("invalid send type")
 )

@@ -1,7 +1,6 @@
 package sender
 
 import (
-	"net"
 	"sync"
 
 	"github.com/webee/multisocket/bytespool"
@@ -29,14 +28,6 @@ type (
 		stopq chan struct{}
 		p     Pipe
 		sendq chan *Message
-	}
-)
-
-var (
-	netBufsPool = &sync.Pool{
-		New: func() interface{} {
-			return make(net.Buffers, 0, 4)
-		},
 	}
 )
 
@@ -245,18 +236,14 @@ func (p *pipe) sendMsg(msg *Message) (err error) {
 		return nil
 	}
 
-	bufs := netBufsPool.Get().(net.Buffers)
 	hbuf := msg.Header.Encode()
-	bufs = append(bufs, hbuf, msg.Source, msg.Destination, msg.Content)
-	_, err = bufs.WriteTo(p.p)
+	if _, err = p.p.Write(hbuf); err == nil {
+		_, err = p.p.Write(msg.EncodeBody())
+	}
 
 	// free
 	// hbuf
 	bytespool.Free(hbuf)
-
-	// bufs
-	bufs = bufs[:0]
-	netBufsPool.Put(bufs)
 	return
 }
 
@@ -270,31 +257,14 @@ func (p *pipe) sendRawMsg(msg *Message) (err error) {
 	return
 }
 
-func (s *sender) newMsg(sendType uint8, dest MsgPath, content []byte) (msg *Message) {
-	return message.NewMessage(sendType, dest, 0, s.ttl(), content)
-}
-
 func (s *sender) sendTo(msg *Message) (err error) {
-	var (
-		id   uint32
-		dest MsgPath
-		ok   bool
-		p    *pipe
-	)
 	if msg.Header.Distance == 0 {
 		// already arrived, just drop
 		return
 	}
 
-	if id, dest, ok = msg.Destination.NextID(); !ok {
-		err = ErrBadDestination
-		return
-	}
-	msg.Destination = dest
-	msg.Header.Distance--
-
 	s.Lock()
-	p = s.pipes[id]
+	p := s.pipes[msg.Destination.CurID()]
 	s.Unlock()
 	if p == nil {
 		err = ErrBrokenPath
@@ -315,15 +285,15 @@ func (s *sender) sendToAll(msg *Message) (err error) {
 }
 
 func (s *sender) Send(content []byte) (err error) {
-	return s.doPushMsg(s.newMsg(SendTypeToOne, nil, content), s.sendq)
+	return s.doPushMsg(message.NewSendMessage(SendTypeToOne, nil, 0, s.ttl(), content), s.sendq)
 }
 
 func (s *sender) SendTo(dest MsgPath, content []byte) (err error) {
-	return s.sendTo(s.newMsg(SendTypeToDest, dest, content))
+	return s.sendTo(message.NewSendMessage(SendTypeToDest, dest, 0, s.ttl(), content))
 }
 
 func (s *sender) SendAll(content []byte) (err error) {
-	return s.sendToAll(s.newMsg(SendTypeToAll, nil, content))
+	return s.sendToAll(message.NewSendMessage(SendTypeToAll, nil, 0, s.ttl(), content))
 }
 
 func (s *sender) SendMsg(msg *Message) error {
