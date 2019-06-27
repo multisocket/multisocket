@@ -3,8 +3,6 @@ package sender
 import (
 	"sync"
 
-	"github.com/webee/multisocket/bytespool"
-
 	"github.com/webee/multisocket/errs"
 
 	"github.com/webee/multisocket/message"
@@ -236,14 +234,7 @@ func (p *pipe) sendMsg(msg *Message) (err error) {
 		return nil
 	}
 
-	hbuf := msg.Header.Encode()
-	if _, err = p.p.Write(hbuf); err == nil {
-		_, err = p.p.Write(msg.EncodeBody())
-	}
-
-	// free
-	// hbuf
-	bytespool.Free(hbuf)
+	_, err = p.p.Write(msg.Encode())
 	return
 }
 
@@ -252,8 +243,8 @@ func (p *pipe) sendRawMsg(msg *Message) (err error) {
 		// ignore none normal messages.
 		return
 	}
-	_, err = p.p.Write(msg.Content)
 
+	_, err = p.p.Write(msg.Content)
 	return
 }
 

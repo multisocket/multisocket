@@ -11,9 +11,8 @@ type (
 	Pipe      = connector.Pipe
 	PipeEvent = connector.PipeEvent
 
-	Message   = message.Message
-	MsgHeader = message.MsgHeader
-	MsgPath   = message.MsgPath
+	Message = message.Message
+	MsgPath = message.MsgPath
 
 	// SenderAction is sender's action
 	SenderAction interface {

@@ -28,7 +28,7 @@ func (d *dialer) Dial(opts options.Options) (_ transport.Connection, err error) 
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewConnection(Transport, transport.NewPrimitiveConn(conn))
+	return transport.NewConnection(Transport, conn)
 }
 
 func (l *listener) Listen(opts options.Options) error {
@@ -42,7 +42,7 @@ func (l *listener) Listen(opts options.Options) error {
 		} else {
 			return errs.ErrAddrInUse
 		}
-	} else {
+	} else if !os.IsNotExist(err) {
 		return err
 	}
 
@@ -63,7 +63,7 @@ func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewConnection(Transport, transport.NewPrimitiveConn(conn))
+	return transport.NewConnection(Transport, conn)
 }
 
 // Close implements the PipeListener Close method.

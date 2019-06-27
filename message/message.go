@@ -5,7 +5,6 @@ import (
 	"io"
 	"io/ioutil"
 	"sync"
-	"unsafe"
 
 	"github.com/webee/multisocket/errs"
 
@@ -18,8 +17,8 @@ const (
 )
 
 type (
-	// MsgHeader message meta data
-	MsgHeader struct {
+	// Header message meta data
+	Header struct {
 		// Flags
 		Flags    uint8  // 6:other flags|2:send type to/one,all,dest
 		TTL      uint8  // time to live
@@ -33,7 +32,7 @@ type (
 
 	// Message is a message
 	Message struct {
-		Header      MsgHeader
+		Header      Header
 		buf         []byte
 		Source      MsgPath
 		Destination MsgPath
@@ -49,10 +48,12 @@ type (
 	}
 )
 
+// HeaderSize is the Header's memory byte size.
+// TODO: update when header modifed
+const HeaderSize = 8
+
 var (
-	// MsgHeaderSize is the MsgHeader's memory byte size.
-	MsgHeaderSize = int(unsafe.Sizeof(MsgHeader{}))
-	emptyHeader   = MsgHeader{
+	emptyHeader = Header{
 		TTL: DefaultMsgTTL,
 	}
 	msgPool = &sync.Pool{
@@ -93,38 +94,27 @@ const (
 )
 
 // SendType get message's send type
-func (h *MsgHeader) SendType() uint8 {
+func (h *Header) SendType() uint8 {
 	return h.Flags & sendTypeMask
 }
 
 // HasFlags check if header has flags setted.
-func (h *MsgHeader) HasFlags(flags uint8) bool {
+func (h *Header) HasFlags(flags uint8) bool {
 	return h.Flags&flags == flags
 }
 
 // HasAnyFlags check if header has any flags setted.
-func (h *MsgHeader) HasAnyFlags() bool {
+func (h *Header) HasAnyFlags() bool {
 	return h.Flags&flagsMask != 0
 }
 
 // ClearFlags clear flags
-func (h *MsgHeader) ClearFlags(flags uint8) uint8 {
+func (h *Header) ClearFlags(flags uint8) uint8 {
 	return h.Flags & (flags ^ 0xff)
 }
 
-// Size get Header byte size.
-func (h *MsgHeader) Size() int {
-	return MsgHeaderSize
-}
-
-// DestLength get distance length
-func (h *MsgHeader) DestLength() int {
-	return int(h.Distance)
-}
-
-// Encode header to bytes
-func (h *MsgHeader) Encode() []byte {
-	b := bytespool.Alloc(MsgHeaderSize)
+// encodeTo encode header to bytes
+func (h *Header) encodeTo(b []byte) []byte {
 	b[0] = h.Flags
 	b[1] = h.TTL
 	b[2] = h.Hops
@@ -134,21 +124,21 @@ func (h *MsgHeader) Encode() []byte {
 	return b
 }
 
-// decodeHeader from reader
-func decodeHeader(r io.Reader, h *MsgHeader) (err error) {
-	b := bytespool.Alloc(MsgHeaderSize)
-	if _, err = io.ReadFull(r, b); err != nil {
+// decodeHeaderFrom reader
+func decodeHeaderFrom(r io.Reader, h *Header) (err error) {
+	a := bytespool.Alloc(HeaderSize)
+	if _, err = io.ReadFull(r, a); err != nil {
 		// free
-		bytespool.Free(b)
+		bytespool.Free(a)
 		return
 	}
-	h.Flags = b[0]
-	h.TTL = b[1]
-	h.Hops = b[2]
-	h.Distance = b[3]
-	h.Length = binary.BigEndian.Uint32(b[4:])
+	h.Flags = a[0]
+	h.TTL = a[1]
+	h.Hops = a[2]
+	h.Distance = a[3]
+	h.Length = binary.BigEndian.Uint32(a[4:])
 	// free
-	bytespool.Free(b)
+	bytespool.Free(a)
 	return nil
 }
 
@@ -183,7 +173,8 @@ func (path MsgPath) NextID() (id uint32, source MsgPath) {
 // NewMessageFromReader create a message from reader
 func NewMessageFromReader(pid uint32, r io.ReadCloser, maxLength uint32) (msg *Message, err error) {
 	var (
-		header     *MsgHeader
+		header     *Header
+		from, to   int
 		sourceSize int
 		destSize   int
 		length     int
@@ -191,7 +182,7 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, maxLength uint32) (msg *M
 	msg = msgPool.Get().(*Message)
 	header = &msg.Header
 
-	if err = decodeHeader(r, header); err != nil {
+	if err = decodeHeaderFrom(r, header); err != nil {
 		msg.FreeAll()
 		msg = nil
 		// err = errs.ErrBadMsg
@@ -210,9 +201,11 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, maxLength uint32) (msg *M
 		destSize = 4 * int(header.Distance-1)
 	}
 	length = int(header.Length)
-	msg.buf = bytespool.Alloc(sourceSize + destSize + length)
+	msg.buf = bytespool.Alloc(HeaderSize + sourceSize + destSize + length)
 	// Source
-	msg.Source = msg.buf[:sourceSize:sourceSize]
+	from = HeaderSize
+	to = from + sourceSize
+	msg.Source = msg.buf[from:to:to]
 	if _, err = io.ReadFull(r, msg.Source[:sourceSize-4]); err != nil {
 		msg.FreeAll()
 		msg = nil
@@ -226,7 +219,9 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, maxLength uint32) (msg *M
 	// Destination
 	if header.Distance > 0 {
 		if destSize > 0 {
-			msg.Destination = msg.buf[sourceSize : sourceSize+destSize : sourceSize+destSize]
+			from = to
+			to = from + destSize
+			msg.Destination = msg.buf[from:to:to]
 			if _, err = io.ReadFull(r, msg.Destination); err != nil {
 				msg.FreeAll()
 				msg = nil
@@ -243,7 +238,9 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, maxLength uint32) (msg *M
 	}
 
 	// Content
-	msg.Content = msg.buf[sourceSize+destSize : sourceSize+destSize+length : sourceSize+destSize+length]
+	from = to
+	to = from + length
+	msg.Content = msg.buf[from:to:to]
 	if _, err = io.ReadFull(r, msg.Content); err != nil {
 		msg.FreeAll()
 		msg = nil
@@ -254,23 +251,32 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, maxLength uint32) (msg *M
 }
 
 // NewRawRecvMessage create a new raw recv message
-func NewRawRecvMessage(pid uint32, content []byte) *Message {
+func NewRawRecvMessage(pid uint32, content []byte) (msg *Message) {
+	var (
+		header     *Header
+		from, to   int
+		sourceSize int
+		length     int
+	)
 	// raw message is always send to one.
-	msg := msgPool.Get().(*Message)
-	msg.Header = MsgHeader{
+	msg = msgPool.Get().(*Message)
+	msg.Header = Header{
 		Flags:    MsgFlagRaw | SendTypeToOne,
 		TTL:      DefaultMsgTTL,
 		Distance: 0,
 		Length:   uint32(len(content)),
 	}
-	header := &msg.Header
+	header = &msg.Header
 
-	sourceSize := 4
-	length := len(content)
+	sourceSize = 4
+	length = len(content)
 
-	msg.buf = bytespool.Alloc(sourceSize + length)
+	msg.buf = bytespool.Alloc(HeaderSize + sourceSize + length)
+
 	// Source
-	msg.Source = msg.buf[:sourceSize:sourceSize]
+	from = HeaderSize
+	to = from + sourceSize
+	msg.Source = msg.buf[from:to:to]
 	// update source, add current pipe id
 	binary.BigEndian.PutUint32(msg.Source, pid)
 	header.Hops++
@@ -278,44 +284,60 @@ func NewRawRecvMessage(pid uint32, content []byte) *Message {
 
 	if content != nil {
 		// nil raw message is EOF
-		msg.Content = msg.buf[sourceSize : sourceSize+length : sourceSize+length]
+		from = to
+		to = from + length
+		msg.Content = msg.buf[from:to:to]
 		copy(msg.Content, content)
 	}
 
-	return msg
+	return
 }
 
 // NewSendMessage create a message to send
 func NewSendMessage(sendType uint8, dest MsgPath, flags uint8, ttl uint8, content []byte) *Message {
+	var (
+		from, to int
+		destSize int
+		length   int
+	)
+
 	if ttl <= 0 {
 		ttl = DefaultMsgTTL
 	}
 	msg := msgPool.Get().(*Message)
-	msg.Header = MsgHeader{
+	msg.Header = Header{
 		Flags:    flags | sendType,
 		TTL:      ttl,
 		Distance: dest.Length(),
 		Length:   uint32(len(content)),
 	}
 
-	destSize := len(dest)
-	length := len(content)
+	destSize = len(dest)
+	length = len(content)
 
-	msg.buf = bytespool.Alloc(destSize + length)
+	msg.buf = bytespool.Alloc(HeaderSize + destSize + length)
+	to = HeaderSize
 
+	// Destination
 	if msg.Header.Distance > 0 {
-		msg.Destination = msg.buf[:destSize:destSize]
+		from = to
+		to = from + destSize
+		msg.Destination = msg.buf[from:to:to]
 		copy(msg.Destination, dest)
 	}
 
-	msg.Content = msg.buf[destSize : destSize+length : destSize+length]
+	// Content
+	from = to
+	to = from + length
+	msg.Content = msg.buf[from:to:to]
 	copy(msg.Content, content)
 
 	return msg
 }
 
-// EncodeBody encode msg'b body parts.
-func (msg *Message) EncodeBody() []byte {
+// Encode encode msg'b body parts.
+func (msg *Message) Encode() []byte {
+	msg.Header.encodeTo(msg.buf)
 	return msg.buf
 }
 

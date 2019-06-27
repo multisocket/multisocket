@@ -52,6 +52,16 @@ func configTCP(conn *net.TCPConn, opts options.Options) error {
 			}
 		}
 	}
+	if val, ok := opts.GetOption(Options.ReadBuffer); ok {
+		if err := conn.SetWriteBuffer(Options.ReadBuffer.Value(val)); err != nil {
+			return err
+		}
+	}
+	if val, ok := opts.GetOption(Options.WriteBuffer); ok {
+		if err := conn.SetWriteBuffer(Options.WriteBuffer.Value(val)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -65,7 +75,7 @@ func (d *dialer) Dial(opts options.Options) (_ transport.Connection, err error) 
 		return nil, err
 	}
 
-	return transport.NewConnection(Transport, transport.NewPrimitiveConn(conn))
+	return transport.NewConnection(Transport, conn)
 }
 
 func (l *listener) Listen(opts options.Options) (err error) {
@@ -89,7 +99,7 @@ func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
 		conn.Close()
 		return nil, err
 	}
-	return transport.NewConnection(Transport, transport.NewPrimitiveConn(conn))
+	return transport.NewConnection(Transport, conn)
 }
 
 func (l *listener) Address() string {

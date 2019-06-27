@@ -13,6 +13,8 @@ type (
 		NoDelay         options.BoolOption
 		KeepAlive       options.BoolOption
 		KeepAlivePeriod options.TimeDurationOption
+		ReadBuffer      options.IntOption
+		WriteBuffer     options.IntOption
 	}
 )
 
@@ -24,6 +26,8 @@ var (
 		NoDelay:         options.NewBoolOption(true),
 		KeepAlive:       options.NewBoolOption(true),
 		KeepAlivePeriod: options.NewTimeDurationOption(time.Duration(0)),
+		ReadBuffer:      options.NewIntOption(0),
+		WriteBuffer:     options.NewIntOption(0),
 	}
 )
 

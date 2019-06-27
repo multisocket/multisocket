@@ -1,9 +1,10 @@
 package inproc
 
 import (
-	"fmt"
 	"io"
+	"net"
 	"sync"
+	"time"
 
 	"github.com/webee/multisocket/options"
 
@@ -25,13 +26,15 @@ type (
 		closedq chan struct{}
 	}
 
+	address string
+
 	// inprocConn implements PrimitiveConnection based on io.Pipe
 	inprocConn struct {
 		sync.Mutex
 		laddr string
 		raddr string
-		pr    *io.PipeReader
-		pw    *io.PipeWriter
+		*io.PipeReader
+		*io.PipeWriter
 	}
 )
 
@@ -55,28 +58,42 @@ func init() {
 	transport.RegisterTransport(Transport)
 }
 
+// address
+
+func (a address) Network() string {
+	return Transport.Scheme()
+}
+
+func (a address) String() string {
+	return string(a)
+}
+
 // inproc
 
-func (p *inprocConn) Read(b []byte) (n int, err error) {
-	return p.pr.Read(b)
-}
-
-func (p *inprocConn) Write(b []byte) (n int, err error) {
-	return p.pw.Write(b)
-}
-
 func (p *inprocConn) Close() error {
-	p.pr.Close()
-	p.pw.Close()
+	p.PipeReader.Close()
+	p.PipeWriter.Close()
 	return nil
 }
 
-func (p *inprocConn) LocalAddress() string {
-	return fmt.Sprintf("%s://%s", Transport.Scheme(), p.laddr)
+func (p *inprocConn) LocalAddr() net.Addr {
+	return address(p.laddr)
 }
 
-func (p *inprocConn) RemoteAddress() string {
-	return fmt.Sprintf("%s://%s", Transport.Scheme(), p.raddr)
+func (p *inprocConn) RemoteAddr() net.Addr {
+	return address(p.raddr)
+}
+
+func (p *inprocConn) SetDeadline(t time.Time) error {
+	return errs.ErrOperationNotSupported
+}
+
+func (p *inprocConn) SetReadDeadline(t time.Time) error {
+	return errs.ErrOperationNotSupported
+}
+
+func (p *inprocConn) SetWriteDeadline(t time.Time) error {
+	return errs.ErrOperationNotSupported
 }
 
 // dialer
@@ -158,17 +175,17 @@ func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
 		rpr, lpw := io.Pipe()
 		// setup accept conn
 		lc := &inprocConn{
-			laddr: l.addr,
-			raddr: l.addr + ".dialer",
-			pr:    lpr,
-			pw:    lpw,
+			laddr:      l.addr,
+			raddr:      l.addr + ".dialer",
+			PipeReader: lpr,
+			PipeWriter: lpw,
 		}
 		// setup dialer conn
 		dc := &inprocConn{
-			laddr: lc.raddr,
-			raddr: lc.laddr,
-			pr:    rpr,
-			pw:    rpw,
+			laddr:      lc.raddr,
+			raddr:      lc.laddr,
+			PipeReader: rpr,
+			PipeWriter: rpw,
 		}
 
 		// notify dialer
