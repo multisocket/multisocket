@@ -10,17 +10,20 @@ import (
 
 // StripScheme removes the leading scheme (such as "http://") from an address
 // string.  This is mostly a utility for benefit of transport providers.
-func StripScheme(t Transport, addr string) (string, error) {
-	if !strings.HasPrefix(addr, t.Scheme()+"://") {
-		return addr, errs.ErrBadTransport
+func StripScheme(t Transport, addr string) (a string, err error) {
+	var i int
+	if i = strings.Index(addr, "://"); i < 0 {
+		err = errs.ErrBadTransport
+		return
 	}
-	return addr[len(t.Scheme()+"://"):], nil
+
+	a = addr[i+3:]
+	return
 }
 
 // ParseScheme parse scheme from address
 func ParseScheme(addr string) (scheme string) {
 	var i int
-
 	if i = strings.Index(addr, "://"); i < 0 {
 		return
 	}
@@ -56,6 +59,13 @@ func GetTransportFromAddr(addr string) Transport {
 func RegisterTransport(t Transport) {
 	lock.Lock()
 	transports[t.Scheme()] = t
+	lock.Unlock()
+}
+
+// RegisterTransportWithScheme register transport as an alias scheme
+func RegisterTransportWithScheme(t Transport, scheme string) {
+	lock.Lock()
+	transports[scheme] = t
 	lock.Unlock()
 }
 
