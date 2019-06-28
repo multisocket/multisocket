@@ -35,12 +35,12 @@ func (l *listener) Listen(opts options.Options) error {
 	// remove exists socket file
 	path := l.addr.String()
 	if stat, err := os.Stat(path); err == nil {
-		if stat.Mode()|os.ModeSocket != 0 {
+		if stat.Mode()&os.ModeSocket != 0 {
 			if err := os.Remove(path); err != nil {
 				return errs.ErrAddrInUse
 			}
 		} else {
-			return errs.ErrAddrInUse
+			return errs.ErrBadAddr
 		}
 	} else if !os.IsNotExist(err) {
 		return err

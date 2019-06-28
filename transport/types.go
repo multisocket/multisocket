@@ -1,6 +1,8 @@
 package transport
 
 import (
+	"net"
+
 	"github.com/webee/multisocket/options"
 )
 
@@ -8,11 +10,8 @@ type (
 	// Connection is connection between peers.
 	Connection interface {
 		Transport() Transport
-
-		Read(b []byte) (n int, err error)
-		Write(b []byte) (n int, err error)
-		Close() error
-
+		net.Conn
+		Writev(v *[][]byte) (int64, error)
 		LocalAddress() string
 		RemoteAddress() string
 	}

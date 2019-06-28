@@ -2,6 +2,7 @@ package connector
 
 import (
 	"github.com/webee/multisocket/options"
+	"github.com/webee/multisocket/transport"
 )
 
 type (
@@ -10,15 +11,9 @@ type (
 		options.Options
 
 		ID() uint32
-		LocalAddress() string
-		RemoteAddress() string
-
 		IsRaw() bool
 
-		Read(b []byte) (n int, err error)
-		Write(b []byte) (n int, err error)
-
-		Close() error
+		transport.Connection
 	}
 )
 

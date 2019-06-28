@@ -99,3 +99,12 @@ func (p *pipe) Write(b []byte) (n int, err error) {
 	}
 	return
 }
+
+func (p *pipe) Writev(v *[][]byte) (n int64, err error) {
+	if n, err = p.Connection.Writev(v); err != nil {
+		if errx := p.Close(); errx != nil {
+			err = errx
+		}
+	}
+	return
+}

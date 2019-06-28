@@ -47,6 +47,7 @@ func Alloc(sz int) []byte {
 
 	for _, pi := range pools {
 		if sz <= pi.sz {
+			// to requested size.
 			return pi.p.Get().([]byte)[:sz]
 		}
 	}

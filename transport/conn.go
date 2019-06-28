@@ -17,6 +17,10 @@ func (conn *connection) Transport() Transport {
 	return conn.transport
 }
 
+func (conn *connection) Writev(v *[][]byte) (int64, error) {
+	return (*net.Buffers)(v).WriteTo(conn.Conn)
+}
+
 func (conn *connection) LocalAddress() string {
 	return fmt.Sprintf("%s://%s", conn.transport.Scheme(), conn.Conn.LocalAddr().String())
 }

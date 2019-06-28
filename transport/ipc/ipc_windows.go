@@ -34,15 +34,15 @@ func (l *listener) Listen(opts options.Options) error {
 	// remove exists named pipe file
 	path := l.addr.String()
 	if stat, err := os.Stat(path); err == nil {
-		if stat.Mode()|os.ModeNamedPipe != 0 {
+		if stat.Mode()&os.ModeNamedPipe != 0 {
 			if err := os.Remove(path); err != nil {
 				return errs.ErrAddrInUse
 			}
 		} else {
-			return errs.ErrAddrInUse
+			return errs.ErrBadAddr
 		}
-	} else {
-		return err
+	} else if !os.IsNotExist(err) {
+			return err
 	}
 
 	config := &winio.PipeConfig{
