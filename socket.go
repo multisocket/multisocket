@@ -11,9 +11,9 @@ import (
 )
 
 type socket struct {
-	Connector
-	Sender
-	Receiver
+	connector.Connector
+	sender.Sender
+	receiver.Receiver
 
 	sync.Mutex
 	closed bool
@@ -25,7 +25,7 @@ func NewDefault() (sock Socket) {
 }
 
 // New creates a Socket
-func New(connector Connector, tx Sender, rx Receiver) (sock Socket) {
+func New(connector connector.Connector, tx sender.Sender, rx receiver.Receiver) (sock Socket) {
 	if rx == nil {
 		// use receiver to check pipe closed
 		rx = receiver.NewWithOptions(options.OptionValues{receiver.Options.NoRecv: true})
@@ -45,15 +45,15 @@ func New(connector Connector, tx Sender, rx Receiver) (sock Socket) {
 	return
 }
 
-func (s *socket) GetConnector() Connector {
+func (s *socket) GetConnector() connector.Connector {
 	return s.Connector
 }
 
-func (s *socket) GetSender() Sender {
+func (s *socket) GetSender() sender.Sender {
 	return s.Sender
 }
 
-func (s *socket) GetReceiver() Receiver {
+func (s *socket) GetReceiver() receiver.Receiver {
 	return s.Receiver
 }
 

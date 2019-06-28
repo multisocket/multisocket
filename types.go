@@ -9,18 +9,14 @@ import (
 type (
 	// Socket is a network peer
 	Socket interface {
-		connector.ConnectorAction
-		sender.SenderAction
-		receiver.ReceiverAction
+		connector.Action
+		sender.Action
+		receiver.Action
 
 		Close() error
 
-		GetConnector() Connector
-		GetSender() Sender
-		GetReceiver() Receiver
+		GetConnector() connector.Connector
+		GetSender() sender.Sender
+		GetReceiver() receiver.Receiver
 	}
-
-	Connector = connector.Connector
-	Sender    = sender.Sender
-	Receiver  = receiver.Receiver
 )

@@ -7,16 +7,9 @@ import (
 )
 
 type (
-	Connector = connector.Connector
-	Pipe      = connector.Pipe
-	PipeEvent = connector.PipeEvent
-
-	Message = message.Message
-	MsgPath = message.MsgPath
-
-	// ReceiverAction is receiver's action
-	ReceiverAction interface {
-		RecvMsg() (*Message, error)
+	// Action is receiver's action
+	Action interface {
+		RecvMsg() (*message.Message, error)
 		Recv() ([]byte, error)
 		// RecvContent()(*Content, error) // can free
 	}
@@ -24,17 +17,8 @@ type (
 	// Receiver controls socket's recv.
 	Receiver interface {
 		options.Options
-		AttachConnector(Connector)
-		ReceiverAction
+		AttachConnector(connector.Connector)
+		Action
 		Close()
 	}
-)
-
-const (
-	SendTypeToOne  = message.SendTypeToOne
-	SendTypeToAll  = message.SendTypeToAll
-	SendTypeToDest = message.SendTypeToDest
-
-	PipeEventAdd    = connector.PipeEventAdd
-	PipeEventRemove = connector.PipeEventRemove
 )

@@ -3,6 +3,8 @@ package sender
 import (
 	"sync"
 
+	"github.com/webee/multisocket/connector"
+
 	"github.com/webee/multisocket/errs"
 
 	"github.com/webee/multisocket/message"
@@ -14,18 +16,18 @@ import (
 type (
 	sender struct {
 		options.Options
-		sendq chan *Message
+		sendq chan *message.Message
 
 		sync.RWMutex
 		closedq            chan struct{}
-		attachedConnectors map[Connector]struct{}
+		attachedConnectors map[connector.Connector]struct{}
 		pipes              map[uint32]*pipe
 	}
 
 	pipe struct {
 		stopq chan struct{}
-		p     Pipe
-		sendq chan *Message
+		p     connector.Pipe
+		sendq chan *message.Message
 	}
 )
 
@@ -37,7 +39,7 @@ func New() Sender {
 // NewWithOptions create a sender with options
 func NewWithOptions(ovs options.OptionValues) Sender {
 	s := &sender{
-		attachedConnectors: make(map[Connector]struct{}),
+		attachedConnectors: make(map[connector.Connector]struct{}),
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
 	}
@@ -53,11 +55,11 @@ func NewWithOptions(ovs options.OptionValues) Sender {
 func (s *sender) onOptionChange(opt options.Option, oldVal, newVal interface{}) {
 	switch opt {
 	case Options.SendQueueSize:
-		s.sendq = make(chan *Message, s.sendQueueSize())
+		s.sendq = make(chan *message.Message, s.sendQueueSize())
 	}
 }
 
-func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message) (err error) {
+func (s *sender) doPushMsg(msg *message.Message, sendq chan<- *message.Message) (err error) {
 	bestEffort := s.bestEffort()
 	if bestEffort {
 		select {
@@ -79,21 +81,21 @@ func (s *sender) doPushMsg(msg *Message, sendq chan<- *Message) (err error) {
 	return
 }
 
-func (s *sender) pushMsgToPipes(msg *Message, pipes []*pipe) {
+func (s *sender) pushMsgToPipes(msg *message.Message, pipes []*pipe) {
 	for _, p := range pipes {
 		s.doPushMsg(msg, p.sendq)
 	}
 }
 
-func (s *sender) newPipe(p Pipe) *pipe {
+func (s *sender) newPipe(p connector.Pipe) *pipe {
 	return &pipe{
 		stopq: make(chan struct{}),
 		p:     p,
-		sendq: make(chan *Message, s.sendQueueSize()),
+		sendq: make(chan *message.Message, s.sendQueueSize()),
 	}
 }
 
-func (s *sender) AttachConnector(connector Connector) {
+func (s *sender) AttachConnector(connector connector.Connector) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -114,16 +116,16 @@ func (s *sender) bestEffort() bool {
 	return s.GetOptionDefault(Options.SendBestEffort).(bool)
 }
 
-func (s *sender) HandlePipeEvent(e PipeEvent, pipe Pipe) {
+func (s *sender) HandlePipeEvent(e connector.PipeEvent, pipe connector.Pipe) {
 	switch e {
-	case PipeEventAdd:
+	case connector.PipeEventAdd:
 		s.addPipe(pipe)
-	case PipeEventRemove:
+	case connector.PipeEventRemove:
 		s.remPipe(pipe.ID())
 	}
 }
 
-func (s *sender) addPipe(pipe Pipe) {
+func (s *sender) addPipe(pipe connector.Pipe) {
 	s.Lock()
 	p := s.newPipe(pipe)
 	s.pipes[p.p.ID()] = p
@@ -158,8 +160,8 @@ DRAIN_MSG_LOOP:
 	}
 }
 
-func (s *sender) resendMsg(msg *Message) error {
-	if msg.Header.SendType() == SendTypeToOne {
+func (s *sender) resendMsg(msg *message.Message) error {
+	if msg.Header.SendType() == message.SendTypeToOne {
 		// only resend when send to one, so we can choose another pipe to send.
 		return s.SendMsg(msg)
 	}
@@ -183,7 +185,7 @@ func (s *sender) run(p *pipe) {
 
 	var (
 		err error
-		msg *Message
+		msg *message.Message
 	)
 
 SENDING:
@@ -228,7 +230,7 @@ SENDING:
 	}
 }
 
-func (p *pipe) sendMsg(msg *Message) (err error) {
+func (p *pipe) sendMsg(msg *message.Message) (err error) {
 	if msg.Header.HasFlags(message.MsgFlagRaw) {
 		// ignore raw messages. raw message is only for stream, forward raw message makes no sense.
 		return nil
@@ -238,7 +240,7 @@ func (p *pipe) sendMsg(msg *Message) (err error) {
 	return
 }
 
-func (p *pipe) sendRawMsg(msg *Message) (err error) {
+func (p *pipe) sendRawMsg(msg *message.Message) (err error) {
 	if msg.Header.HasAnyFlags() {
 		// ignore none normal messages.
 		return
@@ -248,7 +250,7 @@ func (p *pipe) sendRawMsg(msg *Message) (err error) {
 	return
 }
 
-func (s *sender) sendTo(msg *Message) (err error) {
+func (s *sender) sendTo(msg *message.Message) (err error) {
 	if msg.Header.Distance == 0 {
 		// already arrived, just drop
 		return
@@ -265,7 +267,7 @@ func (s *sender) sendTo(msg *Message) (err error) {
 	return s.doPushMsg(msg, p.sendq)
 }
 
-func (s *sender) sendToAll(msg *Message) (err error) {
+func (s *sender) sendToAll(msg *message.Message) (err error) {
 	s.RLock()
 	for _, p := range s.pipes {
 		s.doPushMsg(msg.Dup(), p.sendq)
@@ -276,24 +278,24 @@ func (s *sender) sendToAll(msg *Message) (err error) {
 }
 
 func (s *sender) Send(content []byte) (err error) {
-	return s.doPushMsg(message.NewSendMessage(SendTypeToOne, nil, 0, s.ttl(), content), s.sendq)
+	return s.doPushMsg(message.NewSendMessage(message.SendTypeToOne, nil, 0, s.ttl(), content), s.sendq)
 }
 
-func (s *sender) SendTo(dest MsgPath, content []byte) (err error) {
-	return s.sendTo(message.NewSendMessage(SendTypeToDest, dest, 0, s.ttl(), content))
+func (s *sender) SendTo(dest message.MsgPath, content []byte) (err error) {
+	return s.sendTo(message.NewSendMessage(message.SendTypeToDest, dest, 0, s.ttl(), content))
 }
 
 func (s *sender) SendAll(content []byte) (err error) {
-	return s.sendToAll(message.NewSendMessage(SendTypeToAll, nil, 0, s.ttl(), content))
+	return s.sendToAll(message.NewSendMessage(message.SendTypeToAll, nil, 0, s.ttl(), content))
 }
 
-func (s *sender) SendMsg(msg *Message) error {
+func (s *sender) SendMsg(msg *message.Message) error {
 	switch msg.Header.SendType() {
-	case SendTypeToDest:
+	case message.SendTypeToDest:
 		return s.sendTo(msg)
-	case SendTypeToOne:
+	case message.SendTypeToOne:
 		return s.doPushMsg(msg, s.sendq)
-	case SendTypeToAll:
+	case message.SendTypeToAll:
 		return s.sendToAll(msg)
 	}
 	return ErrInvalidSendType
@@ -308,7 +310,7 @@ func (s *sender) Close() {
 	default:
 		close(s.closedq)
 	}
-	connectors := make([]Connector, 0, len(s.attachedConnectors))
+	connectors := make([]connector.Connector, 0, len(s.attachedConnectors))
 	for conns := range s.attachedConnectors {
 		delete(s.attachedConnectors, conns)
 		connectors = append(connectors, conns)

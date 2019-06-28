@@ -18,16 +18,16 @@ import (
 type (
 	receiver struct {
 		options.Options
-		recvq chan *Message
+		recvq chan *message.Message
 
 		sync.Mutex
 		closedq            chan struct{}
-		attachedConnectors map[Connector]struct{}
+		attachedConnectors map[connector.Connector]struct{}
 		pipes              map[uint32]*pipe
 	}
 
 	pipe struct {
-		p                    Pipe
+		p                    connector.Pipe
 		rawRecvBufSize       int
 		maxRecvContentLength uint32
 	}
@@ -45,7 +45,7 @@ func New() Receiver {
 // NewWithOptions create a normal receiver with options.
 func NewWithOptions(ovs options.OptionValues) Receiver {
 	r := &receiver{
-		attachedConnectors: make(map[Connector]struct{}),
+		attachedConnectors: make(map[connector.Connector]struct{}),
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
 	}
@@ -62,22 +62,22 @@ func NewWithOptions(ovs options.OptionValues) Receiver {
 func (r *receiver) onOptionChange(opt options.Option, oldVal, newVal interface{}) {
 	switch opt {
 	case Options.RecvQueueSize:
-		r.recvq = make(chan *Message, r.recvQueueSize())
+		r.recvq = make(chan *message.Message, r.recvQueueSize())
 	}
 }
 
-func newPipe(p Pipe) *pipe {
+func newPipe(p connector.Pipe) *pipe {
 	return &pipe{
 		p:              p,
 		rawRecvBufSize: p.GetOptionDefault(connector.Options.Pipe.RawRecvBufSize).(int),
 	}
 }
 
-func (p *pipe) recvMsg() (msg *Message, err error) {
+func (p *pipe) recvMsg() (msg *message.Message, err error) {
 	return message.NewMessageFromReader(p.p.ID(), p.p, p.maxRecvContentLength)
 }
 
-func (p *pipe) recvRawMsg() (msg *Message, err error) {
+func (p *pipe) recvRawMsg() (msg *message.Message, err error) {
 	var n int
 	b := bytespool.Alloc(p.rawRecvBufSize)
 	if n, err = p.p.Read(b); err != nil {
@@ -93,7 +93,7 @@ func (p *pipe) recvRawMsg() (msg *Message, err error) {
 	return
 }
 
-func (r *receiver) AttachConnector(connector Connector) {
+func (r *receiver) AttachConnector(connector connector.Connector) {
 	r.Lock()
 	defer r.Unlock()
 
@@ -114,16 +114,16 @@ func (r *receiver) maxRecvContentLength() uint32 {
 	return r.GetOptionDefault(Options.MaxRecvContentLength).(uint32)
 }
 
-func (r *receiver) HandlePipeEvent(e PipeEvent, pipe Pipe) {
+func (r *receiver) HandlePipeEvent(e connector.PipeEvent, pipe connector.Pipe) {
 	switch e {
-	case PipeEventAdd:
+	case connector.PipeEventAdd:
 		r.addPipe(pipe)
-	case PipeEventRemove:
+	case connector.PipeEventRemove:
 		r.remPipe(pipe.ID())
 	}
 }
 
-func (r *receiver) addPipe(pipe Pipe) {
+func (r *receiver) addPipe(pipe connector.Pipe) {
 	r.Lock()
 	p := newPipe(pipe)
 	p.maxRecvContentLength = r.maxRecvContentLength()
@@ -157,7 +157,7 @@ func (r *receiver) run(p *pipe) {
 	var (
 		noRecv = r.noRecv()
 		err    error
-		msg    *Message
+		msg    *message.Message
 	)
 RECVING:
 	for {
@@ -202,7 +202,7 @@ RECVING:
 	}
 }
 
-func (r *receiver) RecvMsg() (msg *Message, err error) {
+func (r *receiver) RecvMsg() (msg *message.Message, err error) {
 	select {
 	case <-r.closedq:
 		err = errs.ErrClosed
@@ -212,7 +212,7 @@ func (r *receiver) RecvMsg() (msg *Message, err error) {
 }
 
 func (r *receiver) Recv() (content []byte, err error) {
-	var msg *Message
+	var msg *message.Message
 	if msg, err = r.RecvMsg(); err != nil {
 		return
 	}
@@ -231,7 +231,7 @@ func (r *receiver) Close() {
 	default:
 		close(r.closedq)
 	}
-	connectors := make([]Connector, 0, len(r.attachedConnectors))
+	connectors := make([]connector.Connector, 0, len(r.attachedConnectors))
 	for conns := range r.attachedConnectors {
 		delete(r.attachedConnectors, conns)
 		connectors = append(connectors, conns)
