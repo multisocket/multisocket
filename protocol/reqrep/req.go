@@ -1,12 +1,11 @@
 package reqrep
 
 import (
+	"bytes"
 	"encoding/binary"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/webee/multisocket/message"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
@@ -19,7 +18,7 @@ type (
 		multisocket.Socket
 		timeout time.Duration
 
-		sync.RWMutex
+		sync.Mutex
 		closedq  chan struct{}
 		reqID    uint32
 		requests map[uint32]*Request
@@ -61,36 +60,26 @@ func (r *req) run() {
 	var (
 		err     error
 		ok      bool
-		msg     *message.Message
+		content []byte
 		request *Request
 	)
-	if log.IsLevelEnabled(log.DebugLevel) {
-		log.WithField("action", "start").Debug("run")
-	}
 	for {
-		if msg, err = r.RecvMsg(); err != nil {
+		if content, err = r.Recv(); err != nil {
 			break
 		}
-		requestID := binary.BigEndian.Uint32(msg.Content)
-		if log.IsLevelEnabled(log.TraceLevel) {
-			log.WithField("requestID", requestID).WithField("action", "start").Trace("recv")
-		}
-		r.RLock()
+		requestID := binary.BigEndian.Uint32(content)
 		if request, ok = r.requests[requestID]; !ok {
-			r.Unlock()
 			if log.IsLevelEnabled(log.DebugLevel) {
-				log.WithField("requestID", requestID).WithField("action", "miss").Debug("recv")
+				log.WithField("requestID", requestID).WithField("action", "miss").Warn("recv")
 			}
 			continue
 		}
+		r.Lock()
 		delete(r.requests, requestID)
-		r.RUnlock()
+		r.Unlock()
 
-		request.Reply = msg.Content[4:]
+		request.Reply = content[4:]
 		request.done(nil)
-		if log.IsLevelEnabled(log.TraceLevel) {
-			log.WithField("requestID", requestID).WithField("action", "done").Trace("recv")
-		}
 	}
 }
 
@@ -139,20 +128,16 @@ func (r *req) ReqeustAsync(content []byte) *Request {
 	r.Lock()
 	r.requests[requestID] = request
 	r.Unlock()
-	if log.IsLevelEnabled(log.TraceLevel) {
-		log.WithField("requestID", requestID).
-			WithField("action", "start").Trace("request")
-	}
 
-	idBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(idBuf, requestID)
-	if err := r.Send(idBuf, content); err != nil {
-		if log.IsLevelEnabled(log.DebugLevel) {
-			log.WithError(err).WithField("requestID", requestID).Debug("request")
-		}
+	buf := bytesBufferPool.Get().(*bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, requestID)
+	buf.Write(content)
+	if err := r.Send(buf.Bytes()); err != nil {
 		request.Cancel()
 		request.done(err)
 	}
+	buf.Reset()
+	bytesBufferPool.Put(buf)
 	return request
 }
 

@@ -16,7 +16,7 @@ import (
 )
 
 func init() {
-	log.SetLevel(log.TraceLevel)
+	log.SetLevel(log.DebugLevel)
 	log.SetFormatter(&log.TextFormatter{
 		ForceColors:   true,
 		FullTimestamp: true,
@@ -66,15 +66,14 @@ func client(addr string, name string) {
 		} else {
 			fmt.Printf("%s\n", string(reply))
 		}
-		time.Sleep(1000 * time.Millisecond)
+		// time.Sleep(100 * time.Millisecond)
 		idx++
 	}
 }
 
 type reqHandler int
 
-func (h reqHandler) Handle(req []byte) (rep []byte) {
-	rep = []byte(fmt.Sprintf("[#%d]Hello, %s", int(h), string(req)))
-	time.Sleep(time.Millisecond * 10)
-	return
+func (h reqHandler) Handle(req []byte) []byte {
+	time.Sleep(100 * time.Millisecond)
+	return []byte(fmt.Sprintf("[#%d]Hello, %s", int(h), string(req)))
 }

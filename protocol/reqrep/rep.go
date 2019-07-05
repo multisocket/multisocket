@@ -1,6 +1,7 @@
 package reqrep
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"sync"
@@ -27,6 +28,14 @@ type (
 
 const (
 	defaultRunner = goRunner(0)
+)
+
+var (
+	bytesBufferPool = &sync.Pool{
+		New: func() interface{} {
+			return new(bytes.Buffer)
+		},
+	}
 )
 
 func (goRunner) Run(f func()) {
@@ -78,15 +87,9 @@ func (r *rep) Close() error {
 }
 
 func (r *rep) run() {
-	var (
-		err error
-		msg *message.Message
-	)
-	if log.IsLevelEnabled(log.DebugLevel) {
-		log.WithField("action", "start").Debug("run")
-	}
 	for {
-		if msg, err = r.RecvMsg(); err != nil {
+		msg, err := r.RecvMsg()
+		if err != nil {
 			break
 		}
 
@@ -95,20 +98,19 @@ func (r *rep) run() {
 }
 
 func (r *rep) handle(msg *message.Message) {
-	requestID := msg.Content[:4]
-	if log.IsLevelEnabled(log.TraceLevel) {
-		log.WithFields(log.Fields{"requestID": binary.BigEndian.Uint32(requestID), "source": fmt.Sprintf("0x%x", msg.Source)}).
-			WithField("action", "start").Trace("handle")
-	}
-	rep := r.handler.Handle(msg.Content[4:])
-	if err := r.SendTo(msg.Source, requestID, rep); err != nil {
-		if log.IsLevelEnabled(log.DebugLevel) {
-			log.WithFields(log.Fields{"requestID": binary.BigEndian.Uint32(requestID), "source": fmt.Sprintf("0x%x", msg.Source)}).
-				WithField("action", "send").Debug("handle")
+	buf := bytesBufferPool.Get().(*bytes.Buffer)
+	// requestID
+	buf.Write(msg.Content[:4])
+	buf.Write(r.handler.Handle(msg.Content[4:]))
+	if err := r.SendTo(msg.Source, buf.Bytes()); err != nil {
+		if log.IsLevelEnabled(log.ErrorLevel) {
+			requestID := msg.Content[:4]
+			log.WithError(err).WithFields(log.Fields{"requestID": binary.BigEndian.Uint32(requestID), "source": fmt.Sprintf("0x%x", msg.Source)}).
+				Error("reply")
 		}
 	}
-	if log.IsLevelEnabled(log.TraceLevel) {
-		log.WithFields(log.Fields{"requestID": binary.BigEndian.Uint32(requestID), "source": fmt.Sprintf("0x%x", msg.Source)}).
-			WithField("action", "done").Trace("handle")
-	}
+	// free
+	buf.Reset()
+	bytesBufferPool.Put(buf)
+	msg.FreeAll()
 }

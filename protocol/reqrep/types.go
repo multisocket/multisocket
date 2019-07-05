@@ -11,7 +11,7 @@ import (
 type (
 	// Req is the Req protocol
 	Req interface {
-		connector.ConnectorAction
+		connector.Action
 		GetSocket() multisocket.Socket
 		Close() error
 
@@ -23,7 +23,7 @@ type (
 
 	// Rep is the Rep protocol
 	Rep interface {
-		connector.ConnectorAction
+		connector.Action
 		GetSocket() multisocket.Socket
 		Close() error
 
