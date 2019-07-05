@@ -157,11 +157,6 @@ func (path MsgPath) CurID() uint32 {
 	return binary.BigEndian.Uint32(path[len(path)-4:])
 }
 
-// AddSource add the new pipe id to tail.
-func (path MsgPath) AddSource(id [4]byte) MsgPath {
-	return append(path, id[:4]...)
-}
-
 // NextID get source's next pipe id and remain source.
 func (path MsgPath) NextID() (id uint32, source MsgPath) {
 	l := len(path)
@@ -294,11 +289,12 @@ func NewRawRecvMessage(pid uint32, content []byte) (msg *Message) {
 }
 
 // NewSendMessage create a message to send
-func NewSendMessage(sendType uint8, dest MsgPath, flags uint8, ttl uint8, content []byte) *Message {
+func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, content []byte) *Message {
 	var (
-		from, to int
-		destSize int
-		length   int
+		from, to   int
+		sourceSize int
+		destSize   int
+		length     int
 	)
 
 	if ttl <= 0 {
@@ -308,15 +304,25 @@ func NewSendMessage(sendType uint8, dest MsgPath, flags uint8, ttl uint8, conten
 	msg.Header = Header{
 		Flags:    flags | sendType,
 		TTL:      ttl,
+		Hops:     src.Length(),
 		Distance: dest.Length(),
 		Length:   uint32(len(content)),
 	}
 
+	sourceSize = len(src)
 	destSize = len(dest)
 	length = len(content)
 
-	msg.buf = bytespool.Alloc(HeaderSize + destSize + length)
+	msg.buf = bytespool.Alloc(HeaderSize + sourceSize + destSize + length)
 	to = HeaderSize
+
+	// Source
+	if sourceSize > 0 {
+		from = to
+		to = from + sourceSize
+		msg.Source = msg.buf[from:to:to]
+		copy(msg.Source, src)
+	}
 
 	// Destination
 	if msg.Header.Distance > 0 {
@@ -370,12 +376,6 @@ func (msg *Message) FreeAll() {
 	msg.Destination = nil
 	msg.Content = nil
 	msgPool.Put(msg)
-}
-
-// AddSource add pipe id to msg source
-func (msg *Message) AddSource(id [4]byte) {
-	msg.Source = msg.Source.AddSource(id)
-	msg.Header.Hops++
 }
 
 // PipeID get this message's source pipe id.
