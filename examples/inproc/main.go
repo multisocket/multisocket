@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -14,7 +15,20 @@ import (
 	"github.com/webee/multisocket/sender"
 )
 
+func init() {
+	log.SetLevel(log.DebugLevel)
+	log.SetFormatter(&log.TextFormatter{
+		ForceColors:   true,
+		FullTimestamp: true,
+	})
+}
+
 func main() {
+	scheme := "inproc"
+	if len(os.Args) > 1 {
+		scheme += "." + os.Args[1]
+	}
+
 	produceSock := multisocket.New(connector.New(), sender.New(), nil)
 	consumeSock := multisocket.New(connector.New(), nil, receiver.New())
 
@@ -22,10 +36,11 @@ func main() {
 	go consume(0, consumeSock)
 	go consume(1, consumeSock)
 
-	if err := produceSock.Listen("inproc://producer"); err != nil {
+	addr := scheme + "://producer"
+	if err := produceSock.Listen(addr); err != nil {
 		log.WithError(err).Panic("listen")
 	}
-	if err := consumeSock.Dial("inproc://producer"); err != nil {
+	if err := consumeSock.Dial(addr); err != nil {
 		log.WithError(err).Panic("dial")
 	}
 

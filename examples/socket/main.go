@@ -5,14 +5,14 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
+
+	"github.com/webee/multisocket/bytespool"
 
 	"github.com/webee/multisocket/address"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/examples"
-	"github.com/webee/multisocket/message"
 	_ "github.com/webee/multisocket/transport/all"
 )
 
@@ -59,13 +59,9 @@ func server(addrs ...address.MultiSocketAddress) {
 	}
 
 	worker := func(n int) {
-		var (
-			err error
-			msg *message.Message
-		)
-
 		for {
-			if msg, err = sock.RecvMsg(); err != nil {
+			msg, err := sock.RecvMsg()
+			if err != nil {
 				log.WithField("err", err).Errorf("recv")
 				continue
 			}
@@ -79,6 +75,7 @@ func server(addrs ...address.MultiSocketAddress) {
 					log.WithField("err", err).Errorf("send")
 				}
 			}
+			msg.FreeAll()
 		}
 	}
 	// recving concurrently
@@ -89,11 +86,6 @@ func server(addrs ...address.MultiSocketAddress) {
 }
 
 func client(name string, addr address.MultiSocketAddress) {
-	var (
-		err     error
-		content []byte
-	)
-
 	sock := multisocket.NewDefault()
 
 	if err := addr.Connect(sock); err != nil {
@@ -102,28 +94,27 @@ func client(name string, addr address.MultiSocketAddress) {
 
 	// sending
 	go func() {
-		var content string
 		idx := 0
 		for {
-			content = fmt.Sprintf("%s#%d", name, idx)
-			if err = sock.Send([]byte(content)); err != nil {
+			content := fmt.Sprintf("%s#%d", name, idx)
+			if err := sock.Send([]byte(content)); err != nil {
 				log.WithField("err", err).Errorf("send")
 			}
 			log.WithField("id", idx).Infof("send")
-			time.Sleep(1000 * time.Millisecond)
+			// time.Sleep(10 * time.Millisecond)
 			idx++
 		}
 	}()
 
 	// recving
-	go func() {
+	func() {
 		for {
-			if content, err = sock.Recv(); err != nil {
+			content, err := sock.Recv()
+			if err != nil {
 				log.WithField("err", err).Errorf("recv")
 			}
 			fmt.Printf("%s\n", string(content))
+			bytespool.Free(content)
 		}
 	}()
-
-	examples.SetupSignal()
 }
