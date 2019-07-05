@@ -163,7 +163,7 @@ DRAIN_MSG_LOOP:
 func (s *sender) resendMsg(msg *message.Message) error {
 	if msg.Header.SendType() == message.SendTypeToOne {
 		// only resend when send to one, so we can choose another pipe to send.
-		return s.SendMsg(msg)
+		return s.doPushMsg(msg, s.sendq)
 	}
 	return nil
 }
@@ -195,12 +195,8 @@ SENDING:
 			break SENDING
 		case <-p.stopq:
 			break SENDING
-		case msg = <-p.sendq:
 		case msg = <-sendq:
-		}
-		if msg.Header.TTL == 0 {
-			// drop msg
-			continue
+		case msg = <-p.sendq:
 		}
 
 		if err = sendMsg(msg); err != nil {
@@ -216,10 +212,9 @@ SENDING:
 			}
 
 			break SENDING
-		} else {
-			// free
-			msg.FreeAll()
 		}
+		// free
+		msg.FreeAll()
 	}
 	// seems can be moved to case <-s.closedq
 	s.remPipe(p.p.ID())
@@ -290,6 +285,10 @@ func (s *sender) SendAll(content []byte) (err error) {
 }
 
 func (s *sender) SendMsg(msg *message.Message) error {
+	if msg.Header.TTL == 0 {
+		// drop msg
+		return nil
+	}
 	switch msg.Header.SendType() {
 	case message.SendTypeToDest:
 		return s.sendTo(msg)
