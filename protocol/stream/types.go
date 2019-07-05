@@ -13,7 +13,7 @@ type (
 	// Stream is the Stream protocol
 	Stream interface {
 		options.Options
-		connector.ConnectorCoreAction
+		connector.CoreAction
 		Close() error
 
 		Connect(timeout time.Duration) (conn Connection, err error)
@@ -28,7 +28,7 @@ type (
 )
 
 // control messages
-const (
-	ControlMsgKeepAlive    string = ">"
-	ControlMsgKeepAliveAck string = "<"
+var (
+	ControlMsgKeepAlive    = []byte(">")
+	ControlMsgKeepAliveAck = []byte("<")
 )

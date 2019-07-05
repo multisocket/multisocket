@@ -9,7 +9,6 @@ import (
 	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/protocol/stream"
-	"github.com/webee/multisocket/transport"
 	_ "github.com/webee/multisocket/transport/all"
 )
 
@@ -44,7 +43,7 @@ func main() {
 	for i := 0; i < 3; i++ {
 		rawStream.DialOptions(rawAddr,
 			options.OptionValues{
-				transport.Options.RawMode:          true,
+				connector.Options.Pipe.RawMode:     true,
 				connector.Options.Dialer.DialAsync: true,
 			})
 	}
@@ -58,7 +57,7 @@ func main() {
 		// async dial
 		rawStream.DialOptions(rawAddr,
 			options.OptionValues{
-				transport.Options.RawMode:          true,
+				connector.Options.Pipe.RawMode:     true,
 				connector.Options.Dialer.DialAsync: true,
 				connector.Options.Dialer.Reconnect: false,
 			})

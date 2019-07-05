@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"bytes"
 	"encoding/binary"
 	"io"
 	"sync"
@@ -37,15 +38,16 @@ type (
 
 	connection struct {
 		sync.Mutex
-		s       *stream
-		id      uint32
-		dest    [4]byte // id bytes
-		closedq chan struct{}
-		recvq   chan *message.Message
-		src     message.MsgPath
-		raw     bool
-		pr      *io.PipeReader
-		pw      *io.PipeWriter
+		s            *stream
+		id           uint32
+		dest         []byte // id bytes
+		closedq      chan struct{}
+		recvq        chan *message.Message
+		recvControlq chan *message.Message
+		src          message.MsgPath
+		raw          bool
+		pr           *io.PipeReader
+		pw           *io.PipeWriter
 	}
 )
 
@@ -95,7 +97,6 @@ func (s *stream) connKeepAliveProbes() int {
 func (s *stream) run() {
 	var (
 		id   uint32
-		ok   bool
 		err  error
 		msg  *message.Message
 		conn *connection
@@ -113,12 +114,13 @@ RUNNING:
 			log.WithField("domain", "stream").
 				WithField("content", string(msg.Content)).Info("recv")
 		}
+
+		conn = nil
 		switch msg.Header.SendType() {
 		case message.SendTypeToDest:
 			// find stream
-			conn = nil
-			if id, ok = msg.Destination.CurID(); ok {
-				conn = s.getConn(id, false)
+			if msg.Destination.Length() == 1 {
+				conn = s.getConn(msg.Destination.CurID(), false)
 			}
 
 			if conn == nil {
@@ -126,14 +128,15 @@ RUNNING:
 					log.WithField("domain", "stream").
 						WithField("streamID", id).Warn("stream not found")
 				}
+				msg.FreeAll()
 				continue RUNNING
 			}
 		default:
 			if !s.acceptable {
+				msg.FreeAll()
 				continue RUNNING
 			}
 
-			conn = nil
 			raw := msg.Header.HasFlags(message.MsgFlagRaw)
 			if raw {
 				// raw
@@ -154,9 +157,11 @@ RUNNING:
 				}
 
 				go conn.run()
+				go conn.runControl()
 
 				select {
 				case <-s.closedq:
+					msg.FreeAll()
 					break RUNNING
 				case s.connq <- conn:
 				}
@@ -165,9 +170,22 @@ RUNNING:
 
 		select {
 		case <-s.closedq:
+			msg.FreeAll()
 			break RUNNING
-		case <-conn.closedq:
-		case conn.recvq <- msg:
+		default:
+			if msg.Header.HasFlags(message.MsgFlagControl) {
+				select {
+				case <-conn.closedq:
+					msg.FreeAll()
+				case conn.recvControlq <- msg:
+				}
+			} else {
+				select {
+				case <-conn.closedq:
+					msg.FreeAll()
+				case conn.recvq <- msg:
+				}
+			}
 		}
 	}
 }
@@ -220,7 +238,7 @@ func (s *stream) Connect(timeout time.Duration) (conn Connection, err error) {
 
 	defer func() {
 		if err != nil {
-			s.remConn(c.id, c.raw)
+			c.Close()
 		}
 	}()
 
@@ -246,10 +264,11 @@ func (s *stream) Connect(timeout time.Duration) (conn Connection, err error) {
 	case msg := <-c.recvq:
 		tm.Stop()
 
-		c.src = msg.Source
+		c.src = append([]byte(nil), msg.Source...)
 		c.raw = msg.Header.HasFlags(message.MsgFlagRaw)
 		c.recvq <- msg
 		go c.run()
+		go c.runControl()
 		if log.IsLevelEnabled(log.DebugLevel) {
 			log.WithField("domain", "stream").
 				WithFields(log.Fields{"streamID": c.id, "raw": c.raw}).
@@ -292,17 +311,20 @@ func (s *stream) Close() error {
 func (s *stream) newConnection(id uint32, src message.MsgPath, raw bool) *connection {
 	pr, pw := io.Pipe()
 	conn := &connection{
-		s:       s,
-		id:      id,
-		dest:    [4]byte{},
-		closedq: make(chan struct{}),
-		recvq:   make(chan *message.Message, s.streamRecvQueueSize),
-		src:     src,
-		raw:     raw,
-		pr:      pr,
-		pw:      pw,
+		s:            s,
+		id:           id,
+		closedq:      make(chan struct{}),
+		recvq:        make(chan *message.Message, s.streamRecvQueueSize),
+		recvControlq: make(chan *message.Message, s.streamRecvQueueSize),
+		src:          append([]byte(nil), src...),
+		raw:          raw,
+		pr:           pr,
+		pw:           pw,
 	}
-	binary.BigEndian.PutUint32(conn.dest[:4], conn.id)
+	if !raw {
+		conn.dest = make([]byte, 4)
+		binary.BigEndian.PutUint32(conn.dest, conn.id)
+	}
 	return conn
 }
 
@@ -314,9 +336,7 @@ func (conn *connection) sendConnect() error {
 			Info(">>connect")
 	}
 
-	msg := message.NewMessage(message.SendTypeToOne, nil, message.MsgFlagControl, []byte(ControlMsgKeepAlive))
-	msg.AddSource(conn.dest)
-	return conn.s.SendMsg(msg)
+	return conn.s.SendMsg(message.NewSendMessage(message.SendTypeToOne, nil, nil, message.MsgFlagControl, 0, ControlMsgKeepAlive))
 }
 
 func (conn *connection) sendKeepAlive() error {
@@ -347,6 +367,37 @@ func (conn *connection) run() {
 	}
 
 	var (
+		msg *message.Message
+	)
+RUNNING:
+	for {
+		select {
+		case <-conn.closedq:
+			break RUNNING
+		case msg = <-conn.recvq:
+			if len(msg.Content) > 0 {
+				conn.pw.Write(msg.Content)
+			}
+			msg.FreeAll()
+		}
+	}
+	conn.Close()
+
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "stream").
+			WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
+			WithField("action", "end").Info("run")
+	}
+}
+
+func (conn *connection) runControl() {
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "stream").
+			WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
+			WithField("action", "start").Info("runControl")
+	}
+
+	var (
 		msg               *message.Message
 		keepAliveTimer    = utils.NewTimer()
 		keepAliveAckTimer = utils.NewTimer()
@@ -367,39 +418,33 @@ RUNNING:
 		select {
 		case <-conn.closedq:
 			break RUNNING
-		case msg = <-conn.recvq:
-			if msg.Header.HasFlags(message.MsgFlagControl) {
-				// handle control msg
-				switch string(msg.Content) {
-				case ControlMsgKeepAlive:
-					if log.IsLevelEnabled(log.DebugLevel) {
-						log.WithField("domain", "stream").
-							WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
-							Info("<keepAlive")
-					}
-					if err := conn.sendKeepAliveAck(); err != nil {
-						break RUNNING
-					}
-				case ControlMsgKeepAliveAck:
-					if log.IsLevelEnabled(log.DebugLevel) {
-						log.WithField("domain", "stream").
-							WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
-							Info("<keepAliveAck")
-					}
-				default:
-					if log.IsLevelEnabled(log.DebugLevel) {
-						log.WithField("domain", "stream").
-							WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
-							WithField("content", string(msg.Content)).
-							Info("<unknownControl")
-					}
+		case msg = <-conn.recvControlq:
+			switch {
+			case bytes.Equal(msg.Content, ControlMsgKeepAlive):
+				if log.IsLevelEnabled(log.DebugLevel) {
+					log.WithField("domain", "stream").
+						WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
+						Info("<keepAlive")
 				}
-			} else {
-				if len(msg.Content) > 0 {
-					// FIXME: send before read will block here.
-					conn.pw.Write(msg.Content)
+				if err := conn.sendKeepAliveAck(); err != nil {
+					break RUNNING
+				}
+			case bytes.Equal(msg.Content, ControlMsgKeepAliveAck):
+				if log.IsLevelEnabled(log.DebugLevel) {
+					log.WithField("domain", "stream").
+						WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
+						Info("<keepAliveAck")
+				}
+			default:
+				if log.IsLevelEnabled(log.DebugLevel) {
+					log.WithField("domain", "stream").
+						WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
+						WithField("content", string(msg.Content)).
+						Info("<unknownControl")
 				}
 			}
+			msg.FreeAll()
+
 			// clear keepAliveAckTimer, reset keepAliveTimer
 			probes = keepAliveProbes
 			keepAliveAckTimer.Stop()
@@ -461,7 +506,7 @@ RUNNING:
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "stream").
 			WithFields(log.Fields{"streamID": conn.id, "raw": conn.raw}).
-			WithField("action", "end").Info("run")
+			WithField("action", "end").Info("runControl")
 	}
 }
 
@@ -479,26 +524,26 @@ func (conn *connection) Write(p []byte) (n int, err error) {
 
 	if log.IsLevelEnabled(log.TraceLevel) {
 		log.WithField("domain", "stream").
+			WithField("id", conn.id).
 			WithField("content", p).Info("write")
 	}
 
 	// NOTE: Writer must not retain p
-	content := append([]byte(nil), p...)
-	if err = conn.sendMsg(content, 0); err != nil {
+	if err = conn.sendMsg(p, 0); err != nil {
 		conn.Close()
 		return
 	}
-	n = len(content)
+	n = len(p)
 	return
 }
 
 func (conn *connection) sendMsg(content []byte, flags uint8) (err error) {
-	msg := message.NewMessage(message.SendTypeToDest, conn.src, flags, content)
-	msg.AddSource(conn.dest)
+	msg := message.NewSendMessage(message.SendTypeToDest, conn.dest, conn.src, flags, 0, content)
 	err = conn.s.SendMsg(msg)
-	if log.IsLevelEnabled(log.DebugLevel) && err != nil {
+	if log.IsLevelEnabled(log.TraceLevel) {
 		log.WithField("domain", "stream").
-			WithError(err).Error("sendMsg")
+			WithField("dest", msg.Destination.CurID()).
+			Debug("sendMsg")
 	}
 	return
 }
@@ -522,6 +567,8 @@ func (conn *connection) Close() error {
 	// TODO: use internal msg to close peer, current we use hearbeat check.
 	if conn.raw {
 		s.Socket.ClosePipe(conn.id)
+	} else {
+		pipeStreamID.Recycle(conn.id)
 	}
 
 	if log.IsLevelEnabled(log.DebugLevel) {
