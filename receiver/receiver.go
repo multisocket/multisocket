@@ -171,24 +171,33 @@ RECVING:
 			if msg != nil {
 				select {
 				case <-r.closedq:
+					msg.FreeAll()
 					break RECVING
 				case r.recvq <- msg:
 				}
 			}
 			break RECVING
 		}
-		if noRecv || msg == nil {
-			// just drop or ignore nil msg
+		if msg == nil {
+			// ignore nil msg
+			continue
+		}
+
+		if noRecv {
+			// just drop
+			msg.FreeAll()
 			continue
 		}
 
 		if msg.Header.HasFlags(message.MsgFlagInternal) {
-			// TODO: handle internal messages.
+			// FIXME: handle internal messages.
+			msg.FreeAll()
 			continue
 		}
 
 		select {
 		case <-r.closedq:
+			msg.FreeAll()
 			break RECVING
 		case r.recvq <- msg:
 		}
@@ -205,7 +214,12 @@ RECVING:
 func (r *receiver) RecvMsg() (msg *message.Message, err error) {
 	select {
 	case <-r.closedq:
-		err = errs.ErrClosed
+		// exhaust received messages
+		select {
+		case msg = <-r.recvq:
+		default:
+			err = errs.ErrClosed
+		}
 	case msg = <-r.recvq:
 	}
 	return
