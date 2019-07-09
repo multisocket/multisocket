@@ -171,13 +171,13 @@ func (d *dialer) dial(redial bool) error {
 	d.Unlock()
 
 	if log.IsLevelEnabled(log.DebugLevel) {
-		raw := Options.Pipe.RawMode.ValueFrom(d.Options)
+		raw := Options.Pipe.Raw.ValueFrom(d.Options)
 		log.WithFields(log.Fields{"addr": d.addr, "action": "start", "raw": raw}).Debug("dial")
 	}
 	tc, err := d.d.Dial(d.Options)
 	if err == nil {
 		if log.IsLevelEnabled(log.DebugLevel) {
-			raw := Options.Pipe.RawMode.ValueFrom(d.Options)
+			raw := Options.Pipe.Raw.ValueFrom(d.Options)
 			log.WithFields(log.Fields{"addr": d.addr, "action": "success", "raw": raw}).Debug("dial")
 		}
 		d.parent.addPipe(newPipe(d.parent, tc, d, nil, d.Options))
@@ -190,7 +190,7 @@ func (d *dialer) dial(redial bool) error {
 		return nil
 	}
 	if log.IsLevelEnabled(log.DebugLevel) {
-		raw := Options.Pipe.RawMode.ValueFrom(d.Options)
+		raw := Options.Pipe.Raw.ValueFrom(d.Options)
 		log.WithError(err).WithFields(log.Fields{"addr": d.addr, "action": "failed", "raw": raw}).Error("dial")
 	}
 

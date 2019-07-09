@@ -61,7 +61,7 @@ func (l *listener) isStopped() bool {
 // serve spins in a loop, calling the accepter's Accept routine.
 func (l *listener) serve() {
 	if log.IsLevelEnabled(log.DebugLevel) {
-		raw := Options.Pipe.RawMode.ValueFrom(l.Options)
+		raw := Options.Pipe.Raw.ValueFrom(l.Options)
 		log.WithFields(log.Fields{"addr": l.addr, "action": "start", "raw": raw}).Debug("accept")
 	}
 	for {
@@ -81,7 +81,7 @@ func (l *listener) serve() {
 		}
 	}
 	if log.IsLevelEnabled(log.DebugLevel) {
-		raw := Options.Pipe.RawMode.ValueFrom(l.Options)
+		raw := Options.Pipe.Raw.ValueFrom(l.Options)
 		log.WithFields(log.Fields{"addr": l.addr, "action": "end", "raw": raw}).Debug("accept")
 	}
 }

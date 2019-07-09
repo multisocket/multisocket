@@ -16,7 +16,7 @@ type (
 	}
 
 	pipeOptions struct {
-		RawMode        options.BoolOption
+		Raw        options.BoolOption
 		RawRecvBufSize options.IntOption
 		// close pipe when peer shutdown write(half-close)
 		CloseOnEOF options.BoolOption
@@ -42,7 +42,7 @@ var (
 			DialAsync:        options.NewBoolOption(false),
 		},
 		Pipe: pipeOptions{
-			RawMode:        options.NewBoolOption(false),
+			Raw:        options.NewBoolOption(false),
 			RawRecvBufSize: options.NewIntOption(4 * 1024),
 			CloseOnEOF:     options.NewBoolOption(true),
 		},

@@ -32,14 +32,14 @@ var pipeID = utils.NewRecyclableIDGenerator()
 func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener, opts options.Options) *pipe {
 	pipeOpts := options.NewOptionsWithValues(options.OptionValues{
 		Options.Pipe.CloseOnEOF:     Options.Pipe.CloseOnEOF.ValueFrom(opts, parent.Options),
-		Options.Pipe.RawMode:        Options.Pipe.RawMode.ValueFrom(opts, parent.Options),
+		Options.Pipe.Raw:        Options.Pipe.Raw.ValueFrom(opts, parent.Options),
 		Options.Pipe.RawRecvBufSize: Options.Pipe.RawRecvBufSize.ValueFrom(opts, parent.Options),
 	})
 	return &pipe{
 		Options:    pipeOpts,
 		Connection: tc,
 		closeOnEOF: Options.Pipe.CloseOnEOF.ValueFrom(pipeOpts),
-		raw:        Options.Pipe.RawMode.ValueFrom(pipeOpts),
+		raw:        Options.Pipe.Raw.ValueFrom(pipeOpts),
 
 		id:     pipeID.NextID(),
 		parent: parent,
