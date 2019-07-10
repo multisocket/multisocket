@@ -6,8 +6,6 @@ import (
 
 	"github.com/webee/multisocket/connector"
 
-	"github.com/webee/multisocket/bytespool"
-
 	"github.com/webee/multisocket/errs"
 
 	log "github.com/sirupsen/logrus"
@@ -28,7 +26,8 @@ type (
 
 	pipe struct {
 		p                    connector.Pipe
-		rawRecvBufSize       int
+		headerBuf            []byte
+		rawRecvBuf           []byte
 		maxRecvContentLength uint32
 	}
 )
@@ -66,30 +65,34 @@ func (r *receiver) onOptionChange(opt options.Option, oldVal, newVal interface{}
 	}
 }
 
-func newPipe(p connector.Pipe) *pipe {
-	return &pipe{
-		p:              p,
-		rawRecvBufSize: p.GetOptionDefault(connector.Options.Pipe.RawRecvBufSize).(int),
+func newPipe(cp connector.Pipe) (p *pipe) {
+	p = &pipe{
+		p:         cp,
+		headerBuf: make([]byte, message.HeaderSize),
 	}
+	if cp.IsRaw() {
+		// alloc
+		p.rawRecvBuf = make([]byte, cp.GetOptionDefault(connector.Options.Pipe.RawRecvBufSize).(int))
+	}
+	return
 }
 
+// SingleGoroutine
 func (p *pipe) recvMsg() (msg *message.Message, err error) {
-	return message.NewMessageFromReader(p.p.ID(), p.p, p.maxRecvContentLength)
+	return message.NewMessageFromReader(p.p.ID(), p.p, p.headerBuf, p.maxRecvContentLength)
 }
 
+// SingleGoroutine
 func (p *pipe) recvRawMsg() (msg *message.Message, err error) {
 	var n int
-	b := bytespool.Alloc(p.rawRecvBufSize)
-	if n, err = p.p.Read(b); err != nil {
+	if n, err = p.p.Read(p.rawRecvBuf); err != nil {
 		if err == io.EOF {
 			// use nil represents EOF
 			msg = message.NewRawRecvMessage(p.p.ID(), nil)
 		}
 	} else {
-		msg = message.NewRawRecvMessage(p.p.ID(), b[:n])
+		msg = message.NewRawRecvMessage(p.p.ID(), p.rawRecvBuf[:n])
 	}
-	// free
-	bytespool.Free(b)
 	return
 }
 
@@ -230,10 +233,7 @@ func (r *receiver) Recv() (content []byte, err error) {
 	if msg, err = r.RecvMsg(); err != nil {
 		return
 	}
-	content = bytespool.Alloc(len(msg.Content))
-	copy(content, msg.Content)
-	msg.FreeAll()
-	return
+	return msg.ToContent(), nil
 }
 
 func (r *receiver) Close() {

@@ -80,6 +80,9 @@ const (
 const (
 	// socket internal message, used by socket internal
 	MsgFlagInternal uint8 = 1 << (iota + 2)
+	// TODO:
+	// MsgFlagNoSource, do not record message source
+	MsgFlagNoSource
 	// MsgFlagRaw is used to indicate the message is from a raw transport
 	MsgFlagRaw
 	// protocol control message, predefined flag, use by protocols implementations or others.
@@ -125,11 +128,8 @@ func (h *Header) encodeTo(b []byte) []byte {
 }
 
 // decodeHeaderFrom reader
-func decodeHeaderFrom(r io.Reader, h *Header) (err error) {
-	a := bytespool.Alloc(HeaderSize)
+func decodeHeaderFrom(r io.Reader, a []byte, h *Header) (err error) {
 	if _, err = io.ReadFull(r, a); err != nil {
-		// free
-		bytespool.Free(a)
 		return
 	}
 	h.Flags = a[0]
@@ -137,8 +137,6 @@ func decodeHeaderFrom(r io.Reader, h *Header) (err error) {
 	h.Hops = a[2]
 	h.Distance = a[3]
 	h.Length = binary.BigEndian.Uint32(a[4:])
-	// free
-	bytespool.Free(a)
 	return nil
 }
 
@@ -166,7 +164,7 @@ func (path MsgPath) NextID() (id uint32, source MsgPath) {
 }
 
 // NewMessageFromReader create a message from reader
-func NewMessageFromReader(pid uint32, r io.ReadCloser, maxLength uint32) (msg *Message, err error) {
+func NewMessageFromReader(pid uint32, r io.ReadCloser, headerBuf []byte, maxLength uint32) (msg *Message, err error) {
 	var (
 		header     *Header
 		from, to   int
@@ -177,7 +175,7 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, maxLength uint32) (msg *M
 	msg = msgPool.Get().(*Message)
 	header = &msg.Header
 
-	if err = decodeHeaderFrom(r, header); err != nil {
+	if err = decodeHeaderFrom(r, headerBuf, header); err != nil {
 		msg.FreeAll()
 		msg = nil
 		// err = errs.ErrBadMsg
@@ -381,4 +379,18 @@ func (msg *Message) FreeAll() {
 // PipeID get this message's source pipe id.
 func (msg *Message) PipeID() uint32 {
 	return msg.Source.CurID()
+}
+
+// ToContent extract the message content then free message.
+func (msg *Message) ToContent() (content []byte) {
+	content = bytespool.Alloc(len(msg.Content))
+	copy(content, msg.Content)
+	msg.FreeAll()
+
+	return
+}
+
+// FreeContent free message's content
+func FreeContent(c []byte) {
+	bytespool.Free(c)
 }
