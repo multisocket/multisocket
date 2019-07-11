@@ -162,7 +162,7 @@ func (p *pipe) RecvMsg() (msg *message.Message, err error) {
 }
 
 func (p *pipe) recvMsg() (msg *message.Message, err error) {
-	return message.NewMessageFromReader(p.id, p.Connection, p.headerBuf, p.maxRecvContentLength)
+	return message.NewMessageFromReader(p.id, p, p.headerBuf, p.maxRecvContentLength)
 }
 
 func (p *pipe) recvRawMsg() (msg *message.Message, err error) {

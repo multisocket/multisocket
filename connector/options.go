@@ -18,7 +18,7 @@ type (
 	pipeOptions struct {
 		Raw            options.BoolOption
 		RawRecvBufSize options.IntOption
-		// close pipe when peer shutdown write(half-close)
+		// close pipe when peer shutdown write(half-close, cause EOF)
 		CloseOnEOF           options.BoolOption
 		MaxRecvContentLength options.Uint32Option
 	}
