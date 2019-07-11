@@ -28,8 +28,6 @@ var (
 
 func init() {
 	transport.RegisterTransport(Transport)
-	// as default inproc transport
-	transport.RegisterTransportWithScheme(Transport, "inproc")
 }
 
 func newPipe(opts options.Options) (net.Conn, net.Conn) {
