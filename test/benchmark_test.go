@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/address"
 	"github.com/webee/multisocket/message"
 	_ "github.com/webee/multisocket/transport/all"
 )
@@ -111,13 +112,22 @@ func BenchmarkRecvThroughput(b *testing.B) {
 
 // benchmark single message's average latency
 func benchmarkSingleLatency(b *testing.B, addr string, sz int) {
+	var (
+		err error
+		sa  address.MultiSocketAddress
+	)
+
+	if sa, err = address.ParseMultiSocketAddress(addr); err != nil {
+		b.Errorf("parse address error: %s", err)
+	}
+
 	srvsock := multisocket.NewDefault()
 	defer srvsock.Close()
 
 	clisock := multisocket.NewDefault()
 	defer clisock.Close()
 
-	if err := srvsock.Listen(addr); err != nil {
+	if err = sa.Listen(srvsock); err != nil {
 		b.Errorf("server listen error: %s", err)
 		return
 	}
@@ -138,7 +148,7 @@ func benchmarkSingleLatency(b *testing.B, addr string, sz int) {
 		}
 	}()
 
-	if err := clisock.Dial(addr); err != nil {
+	if err = sa.Dial(clisock); err != nil {
 		b.Errorf("client dial error: %s", err)
 		return
 	}
@@ -146,7 +156,6 @@ func benchmarkSingleLatency(b *testing.B, addr string, sz int) {
 	time.Sleep(500 * time.Millisecond)
 
 	var (
-		err     error
 		content = make([]byte, sz)
 	)
 	b.SetBytes(1)
@@ -166,13 +175,22 @@ func benchmarkSingleLatency(b *testing.B, addr string, sz int) {
 
 // benchmark a group of messages' total average latency
 func benchmarkGroupLatency(b *testing.B, addr string, sz int) {
+	var (
+		err error
+		sa  address.MultiSocketAddress
+	)
+
+	if sa, err = address.ParseMultiSocketAddress(addr); err != nil {
+		b.Errorf("parse address error: %s", err)
+	}
+
 	srvsock := multisocket.NewDefault()
 	defer srvsock.Close()
 
 	clisock := multisocket.NewDefault()
 	defer clisock.Close()
 
-	if err := srvsock.Listen(addr); err != nil {
+	if err = sa.Listen(srvsock); err != nil {
 		b.Errorf("server listen error: %s", err)
 		return
 	}
@@ -193,7 +211,7 @@ func benchmarkGroupLatency(b *testing.B, addr string, sz int) {
 		wg.Done()
 	}()
 
-	if err := clisock.Dial(addr); err != nil {
+	if err = sa.Dial(clisock); err != nil {
 		b.Errorf("client dial error: %s", err)
 		return
 	}
@@ -201,7 +219,6 @@ func benchmarkGroupLatency(b *testing.B, addr string, sz int) {
 	time.Sleep(500 * time.Millisecond)
 
 	var (
-		err     error
 		content = make([]byte, sz)
 	)
 	b.SetBytes(1)
@@ -219,13 +236,22 @@ func benchmarkGroupLatency(b *testing.B, addr string, sz int) {
 
 // benchmark sender side's throughput, use -benchmem to see xx MB/s => xx M(msg)/s
 func benchmarkSendThroughput(b *testing.B, addr string, sz int) {
+	var (
+		err error
+		sa  address.MultiSocketAddress
+	)
+
+	if sa, err = address.ParseMultiSocketAddress(addr); err != nil {
+		b.Errorf("parse address error: %s", err)
+	}
+
 	srvsock := multisocket.NewDefault()
 	defer srvsock.Close()
 
 	clisock := multisocket.NewDefault()
 	defer clisock.Close()
 
-	if err := srvsock.Listen(addr); err != nil {
+	if err = sa.Listen(srvsock); err != nil {
 		b.Errorf("server listen error: %s", err)
 		return
 	}
@@ -241,7 +267,7 @@ func benchmarkSendThroughput(b *testing.B, addr string, sz int) {
 		}
 	}()
 
-	if err := clisock.Dial(addr); err != nil {
+	if err := sa.Dial(clisock); err != nil {
 		b.Errorf("client dial error: %s", err)
 		return
 	}
@@ -252,7 +278,6 @@ func benchmarkSendThroughput(b *testing.B, addr string, sz int) {
 
 	b.ResetTimer()
 	var (
-		err     error
 		content = make([]byte, sz)
 	)
 	for i := 0; i < b.N; i++ {
@@ -267,13 +292,21 @@ func benchmarkSendThroughput(b *testing.B, addr string, sz int) {
 
 // benchmark receiver side's throughput, use -benchmem to see xx MB/s => xx M(msg)/s
 func benchmarkRecvThroughput(b *testing.B, addr string, sz int) {
+	var (
+		err error
+		sa  address.MultiSocketAddress
+	)
+	if sa, err = address.ParseMultiSocketAddress(addr); err != nil {
+		b.Errorf("parse address error: %s", err)
+	}
+
 	srvsock := multisocket.NewDefault()
 	defer srvsock.Close()
 
 	clisock := multisocket.NewDefault()
 	defer clisock.Close()
 
-	if err := srvsock.Listen(addr); err != nil {
+	if err = sa.Listen(srvsock); err != nil {
 		b.Errorf("server listen error: %s", err)
 		return
 	}
@@ -291,7 +324,7 @@ func benchmarkRecvThroughput(b *testing.B, addr string, sz int) {
 		}
 	}()
 
-	if err := clisock.Dial(addr); err != nil {
+	if err = sa.Dial(clisock); err != nil {
 		b.Errorf("client dial error: %s", err)
 		return
 	}
@@ -302,7 +335,6 @@ func benchmarkRecvThroughput(b *testing.B, addr string, sz int) {
 
 	b.ResetTimer()
 	var (
-		err error
 		msg *message.Message
 	)
 	for i := 0; i < b.N; i++ {
