@@ -22,6 +22,8 @@ type (
 		Address() string
 		OptionValues() options.OptionValues
 		Connect(ctr DialListener, ovses ...options.OptionValues) error
+		Dial(ctr DialListener, ovses ...options.OptionValues) error
+		Listen(ctr DialListener, ovses ...options.OptionValues) error
 	}
 
 	multiSocketAddress struct {
@@ -40,8 +42,8 @@ var (
 
 // Connect Types
 const (
-	Dial   = "dial"
-	Listen = "listen"
+	ConnDial   = "dial"
+	ConnListen = "listen"
 )
 
 // ParseMultiSocketAddress parse s to a MultiSocketAddress
@@ -61,9 +63,9 @@ func ParseMultiSocketAddress(s string) (sa MultiSocketAddress, err error) {
 
 	switch u.Fragment {
 	case "dial":
-		connType = Dial
+		connType = ConnDial
 	case "listen":
-		connType = Listen
+		connType = ConnListen
 	case "":
 		// connect type missing
 	default:
@@ -112,6 +114,17 @@ func (sa *multiSocketAddress) OptionValues() options.OptionValues {
 }
 
 func (sa *multiSocketAddress) Connect(ctr DialListener, ovses ...options.OptionValues) error {
+	switch sa.connType {
+	case ConnDial:
+		return sa.Dial(ctr, ovses...)
+	case ConnListen:
+		return sa.Listen(ctr, ovses...)
+	default:
+		return ErrConnectTypeMissing
+	}
+}
+
+func (sa *multiSocketAddress) Dial(ctr DialListener, ovses ...options.OptionValues) error {
 	xovs := options.OptionValues{}
 	for o, v := range sa.ovs {
 		xovs[o] = v
@@ -122,14 +135,21 @@ func (sa *multiSocketAddress) Connect(ctr DialListener, ovses ...options.OptionV
 		}
 	}
 
-	switch sa.connType {
-	case Dial:
-		return ctr.DialOptions(sa.addr, xovs)
-	case Listen:
-		return ctr.ListenOptions(sa.addr, xovs)
-	default:
-		return ErrConnectTypeMissing
+	return ctr.DialOptions(sa.addr, xovs)
+}
+
+func (sa *multiSocketAddress) Listen(ctr DialListener, ovses ...options.OptionValues) error {
+	xovs := options.OptionValues{}
+	for o, v := range sa.ovs {
+		xovs[o] = v
 	}
+	for _, ovs := range ovses {
+		for o, v := range ovs {
+			xovs[o] = v
+		}
+	}
+
+	return ctr.ListenOptions(sa.addr, xovs)
 }
 
 // Connect parse s to MultiSocketAddress and Connect with option values.
@@ -142,4 +162,28 @@ func Connect(ctr DialListener, s string, ovses ...options.OptionValues) (err err
 	}
 
 	return sa.Connect(ctr, ovses...)
+}
+
+// Dial parse s to MultiSocketAddress and Dial with option values.
+func Dial(ctr DialListener, s string, ovses ...options.OptionValues) (err error) {
+	var (
+		sa MultiSocketAddress
+	)
+	if sa, err = ParseMultiSocketAddress(s); err != nil {
+		return
+	}
+
+	return sa.Dial(ctr, ovses...)
+}
+
+// Listen parse s to MultiSocketAddress and Listen with option values.
+func Listen(ctr DialListener, s string, ovses ...options.OptionValues) (err error) {
+	var (
+		sa MultiSocketAddress
+	)
+	if sa, err = ParseMultiSocketAddress(s); err != nil {
+		return
+	}
+
+	return sa.Listen(ctr, ovses...)
 }
