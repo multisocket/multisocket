@@ -32,8 +32,8 @@ type (
 
 	// Message is a message
 	Message struct {
-		Header      Header
 		buf         []byte
+		Header      Header
 		Source      MsgPath
 		Destination MsgPath
 		Content     []byte
@@ -140,11 +140,6 @@ func decodeHeaderFrom(r io.Reader, a []byte, h *Header) (err error) {
 	return nil
 }
 
-// Size get Path byte size
-func (path MsgPath) Size() int {
-	return len(path)
-}
-
 // Length get Path length
 func (path MsgPath) Length() uint8 {
 	return uint8(len(path) / 4)
@@ -152,7 +147,11 @@ func (path MsgPath) Length() uint8 {
 
 // CurID get source's current pipe id.
 func (path MsgPath) CurID() uint32 {
-	return binary.BigEndian.Uint32(path[len(path)-4:])
+	l := len(path)
+	if l < 4 {
+		return 0
+	}
+	return binary.BigEndian.Uint32(path[l-4:])
 }
 
 // NextID get source's next pipe id and remain source.

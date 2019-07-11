@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"github.com/webee/multisocket/message"
 	"github.com/webee/multisocket/options"
 	"github.com/webee/multisocket/transport"
 )
@@ -14,6 +15,8 @@ type (
 		IsRaw() bool
 
 		transport.Connection
+		SendMsg(msg *message.Message) (err error)
+		RecvMsg() (msg *message.Message, err error)
 	}
 )
 
@@ -60,11 +63,13 @@ type (
 		Dial(addr string) error
 		DialOptions(addr string, ovs options.OptionValues) error
 		NewDialer(addr string, ovs options.OptionValues) (Dialer, error)
+		// StopDial stop dial to address, but keep connected pipes.
 		StopDial(addr string)
 
 		Listen(addr string) error
 		ListenOptions(addr string, ovs options.OptionValues) error
 		NewListener(addr string, ovs options.OptionValues) (Listener, error)
+		// StopDial stop listen on address, but keep accepted pipes.
 		StopListen(addr string)
 	}
 

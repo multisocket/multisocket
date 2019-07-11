@@ -4,9 +4,7 @@ import (
 	"sync"
 
 	"github.com/webee/multisocket/connector"
-
 	"github.com/webee/multisocket/errs"
-
 	"github.com/webee/multisocket/message"
 
 	log "github.com/sirupsen/logrus"
@@ -25,8 +23,8 @@ type (
 	}
 
 	pipe struct {
+		connector.Pipe
 		stopq chan struct{}
-		p     connector.Pipe
 		sendq chan *message.Message
 	}
 )
@@ -87,10 +85,10 @@ func (s *sender) pushMsgToPipes(msg *message.Message, pipes []*pipe) {
 	}
 }
 
-func (s *sender) newPipe(p connector.Pipe) *pipe {
+func (s *sender) newPipe(cp connector.Pipe) *pipe {
 	return &pipe{
+		Pipe:  cp,
 		stopq: make(chan struct{}),
-		p:     p,
 		sendq: make(chan *message.Message, s.sendQueueSize()),
 	}
 }
@@ -128,7 +126,7 @@ func (s *sender) HandlePipeEvent(e connector.PipeEvent, pipe connector.Pipe) {
 func (s *sender) addPipe(pipe connector.Pipe) {
 	s.Lock()
 	p := s.newPipe(pipe)
-	s.pipes[p.p.ID()] = p
+	s.pipes[p.ID()] = p
 	go s.run(p)
 	s.Unlock()
 }
@@ -171,16 +169,8 @@ func (s *sender) resendMsg(msg *message.Message) error {
 func (s *sender) run(p *pipe) {
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "sender").
-			WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
+			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
 			Debug("sender start run")
-	}
-
-	sendMsg := p.sendMsg
-	sendq := s.sendq
-	if p.p.IsRaw() {
-		sendMsg = p.sendRawMsg
-		// raw pipe should not recv send to one messages.
-		sendq = nil
 	}
 
 	var (
@@ -188,6 +178,11 @@ func (s *sender) run(p *pipe) {
 		msg *message.Message
 	)
 
+	sendq := s.sendq
+	if p.IsRaw() {
+		// raw pipe should not recv send to one messages.
+		sendq = nil
+	}
 SENDING:
 	for {
 		select {
@@ -199,11 +194,11 @@ SENDING:
 		case msg = <-p.sendq:
 		}
 
-		if err = sendMsg(msg); err != nil {
+		if err = p.SendMsg(msg); err != nil {
 			if log.IsLevelEnabled(log.DebugLevel) {
 				log.WithField("domain", "sender").
 					WithError(err).
-					WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
+					WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
 					Error("sendMsg")
 			}
 			if errx := s.resendMsg(msg); errx != nil {
@@ -217,32 +212,12 @@ SENDING:
 		msg.FreeAll()
 	}
 	// seems can be moved to case <-s.closedq
-	s.remPipe(p.p.ID())
+	s.remPipe(p.ID())
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "sender").
-			WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
+			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
 			Debug("sender stopped run")
 	}
-}
-
-func (p *pipe) sendMsg(msg *message.Message) (err error) {
-	if msg.Header.HasFlags(message.MsgFlagRaw) {
-		// ignore raw messages. raw message is only for stream, forward raw message makes no sense.
-		return nil
-	}
-
-	_, err = p.p.Write(msg.Encode())
-	return
-}
-
-func (p *pipe) sendRawMsg(msg *message.Message) (err error) {
-	if msg.Header.HasAnyFlags() {
-		// ignore none normal messages.
-		return
-	}
-
-	_, err = p.p.Write(msg.Content)
-	return
 }
 
 func (s *sender) sendTo(msg *message.Message) (err error) {
@@ -251,9 +226,9 @@ func (s *sender) sendTo(msg *message.Message) (err error) {
 		return
 	}
 
-	s.Lock()
+	s.RLock()
 	p := s.pipes[msg.Destination.CurID()]
-	s.Unlock()
+	s.RUnlock()
 	if p == nil {
 		err = ErrBrokenPath
 		return

@@ -1,7 +1,6 @@
 package receiver
 
 import (
-	"io"
 	"sync"
 
 	"github.com/webee/multisocket/connector"
@@ -25,10 +24,7 @@ type (
 	}
 
 	pipe struct {
-		p                    connector.Pipe
-		headerBuf            []byte
-		rawRecvBuf           []byte
-		maxRecvContentLength uint32
+		connector.Pipe
 	}
 )
 
@@ -65,35 +61,8 @@ func (r *receiver) onOptionChange(opt options.Option, oldVal, newVal interface{}
 	}
 }
 
-func newPipe(cp connector.Pipe) (p *pipe) {
-	p = &pipe{
-		p:         cp,
-		headerBuf: make([]byte, message.HeaderSize),
-	}
-	if cp.IsRaw() {
-		// alloc
-		p.rawRecvBuf = make([]byte, cp.GetOptionDefault(connector.Options.Pipe.RawRecvBufSize).(int))
-	}
-	return
-}
-
-// SingleGoroutine
-func (p *pipe) recvMsg() (msg *message.Message, err error) {
-	return message.NewMessageFromReader(p.p.ID(), p.p, p.headerBuf, p.maxRecvContentLength)
-}
-
-// SingleGoroutine
-func (p *pipe) recvRawMsg() (msg *message.Message, err error) {
-	var n int
-	if n, err = p.p.Read(p.rawRecvBuf); err != nil {
-		if err == io.EOF {
-			// use nil represents EOF
-			msg = message.NewRawRecvMessage(p.p.ID(), nil)
-		}
-	} else {
-		msg = message.NewRawRecvMessage(p.p.ID(), p.rawRecvBuf[:n])
-	}
-	return
+func newPipe(cp connector.Pipe) *pipe {
+	return &pipe{Pipe: cp}
 }
 
 func (r *receiver) AttachConnector(connector connector.Connector) {
@@ -113,10 +82,6 @@ func (r *receiver) noRecv() bool {
 	return r.GetOptionDefault(Options.NoRecv).(bool)
 }
 
-func (r *receiver) maxRecvContentLength() uint32 {
-	return r.GetOptionDefault(Options.MaxRecvContentLength).(uint32)
-}
-
 func (r *receiver) HandlePipeEvent(e connector.PipeEvent, pipe connector.Pipe) {
 	switch e {
 	case connector.PipeEventAdd:
@@ -129,8 +94,7 @@ func (r *receiver) HandlePipeEvent(e connector.PipeEvent, pipe connector.Pipe) {
 func (r *receiver) addPipe(pipe connector.Pipe) {
 	r.Lock()
 	p := newPipe(pipe)
-	p.maxRecvContentLength = r.maxRecvContentLength()
-	r.pipes[p.p.ID()] = p
+	r.pipes[p.ID()] = p
 	go r.run(p)
 	r.Unlock()
 }
@@ -144,17 +108,8 @@ func (r *receiver) remPipe(id uint32) {
 func (r *receiver) run(p *pipe) {
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "receiver").
-			WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
+			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
 			Debug("receiver start run")
-	}
-
-	recvMsg := p.recvMsg
-	if p.p.IsRaw() {
-		recvMsg = p.recvRawMsg
-
-		// NOTE:
-		// send a empty message to make a connection
-		r.recvq <- message.NewRawRecvMessage(p.p.ID(), emptyByteSlice)
 	}
 
 	var (
@@ -162,13 +117,19 @@ func (r *receiver) run(p *pipe) {
 		err    error
 		msg    *message.Message
 	)
+
+	if p.IsRaw() {
+		// NOTE:
+		// send a empty message to make a connection
+		r.recvq <- message.NewRawRecvMessage(p.ID(), emptyByteSlice)
+	}
 RECVING:
 	for {
-		if msg, err = recvMsg(); err != nil {
+		if msg, err = p.RecvMsg(); err != nil {
 			if log.IsLevelEnabled(log.DebugLevel) {
 				log.WithField("domain", "receiver").
 					WithError(err).
-					WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
+					WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
 					Error("recvMsg")
 			}
 			if msg != nil {
@@ -206,10 +167,10 @@ RECVING:
 		}
 	}
 
-	r.remPipe(p.p.ID())
+	r.remPipe(p.ID())
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "receiver").
-			WithFields(log.Fields{"id": p.p.ID(), "raw": p.p.IsRaw()}).
+			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
 			Debug("receiver stopped run")
 	}
 }
