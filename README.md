@@ -112,3 +112,7 @@ See wiki.
 
 ## Examples
 See examples/
+
+## Acknowledgement
+This project is inspired by zeromq and nanomsg, especially nanomsg/mangos from which some code references.
+Thank all them for their efforts.
