@@ -34,7 +34,9 @@ type pipe struct {
 	closed bool
 }
 
-var pipeID = utils.NewRecyclableIDGenerator()
+var (
+	pipeID = utils.NewRecyclableIDGenerator()
+)
 
 func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener, opts options.Options) *pipe {
 	pipeOpts := options.NewOptionsWithValues(options.OptionValues{
@@ -117,8 +119,8 @@ func (p *pipe) Write(b []byte) (n int, err error) {
 	return
 }
 
-func (p *pipe) Writev(v *[][]byte) (n int64, err error) {
-	if n, err = p.Connection.Writev(v); err != nil {
+func (p *pipe) Writev(v ...[]byte) (n int64, err error) {
+	if n, err = p.Connection.Writev(v...); err != nil {
 		if errx := p.Close(); errx != nil {
 			err = errx
 		}
@@ -140,7 +142,11 @@ func (p *pipe) sendMsg(msg *message.Message) (err error) {
 		return nil
 	}
 
+	// if zero copy {
+	// 	_, err = p.Writev(msg.Encode(), msg.Content)
+	// } else {
 	_, err = p.Write(msg.Encode())
+	// }
 	return
 }
 

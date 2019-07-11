@@ -17,8 +17,8 @@ func (conn *connection) Transport() Transport {
 	return conn.transport
 }
 
-func (conn *connection) Writev(v *[][]byte) (int64, error) {
-	return (*net.Buffers)(v).WriteTo(conn.Conn)
+func (conn *connection) Writev(v ...[]byte) (int64, error) {
+	return (*net.Buffers)(&v).WriteTo(conn.Conn)
 }
 
 func (conn *connection) LocalAddress() string {

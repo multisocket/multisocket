@@ -309,6 +309,9 @@ func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, c
 	sourceSize = len(src)
 	destSize = len(dest)
 	length = len(content)
+	// if zero copy {
+	// 	length = 0
+	// }
 
 	msg.buf = bytespool.Alloc(HeaderSize + sourceSize + destSize + length)
 	to = HeaderSize
@@ -330,10 +333,14 @@ func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, c
 	}
 
 	// Content
+	// if zero copy {
+	// 	msg.Content = content
+	// } else {
 	from = to
 	to = from + length
 	msg.Content = msg.buf[from:to:to]
 	copy(msg.Content, content)
+	// }
 
 	return msg
 }
@@ -371,6 +378,9 @@ func (msg *Message) FreeAll() {
 	msg.Header = emptyHeader
 	msg.Source = nil
 	msg.Destination = nil
+	// if zero copy {
+	// 	bytespool.Free(msg.Content)
+	// }
 	msg.Content = nil
 	msgPool.Put(msg)
 }

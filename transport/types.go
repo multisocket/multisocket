@@ -11,7 +11,7 @@ type (
 	Connection interface {
 		Transport() Transport
 		net.Conn
-		Writev(v *[][]byte) (int64, error)
+		Writev(v ...[]byte) (int64, error)
 		LocalAddress() string
 		RemoteAddress() string
 	}
