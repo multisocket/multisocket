@@ -6,6 +6,7 @@ package ipc
 import (
 	"net"
 	"os"
+	"sync"
 
 	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/options"
@@ -20,6 +21,8 @@ type (
 	listener struct {
 		addr     *net.UnixAddr
 		listener *net.UnixListener
+		sync.Mutex
+		closedq chan struct{}
 	}
 )
 
@@ -32,6 +35,12 @@ func (d *dialer) Dial(opts options.Options) (_ transport.Connection, err error) 
 }
 
 func (l *listener) Listen(opts options.Options) error {
+	select {
+	case <-l.closedq:
+		return errs.ErrClosed
+	default:
+	}
+
 	// remove exists socket file
 	path := l.addr.String()
 	if stat, err := os.Stat(path); err == nil {
@@ -55,6 +64,12 @@ func (l *listener) Listen(opts options.Options) error {
 }
 
 func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
+	select {
+	case <-l.closedq:
+		return nil, errs.ErrClosed
+	default:
+	}
+
 	if l.listener == nil {
 		return nil, errs.ErrBadOperateState
 	}
@@ -68,6 +83,16 @@ func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
 
 // Close implements the PipeListener Close method.
 func (l *listener) Close() error {
+	l.Lock()
+	select {
+	case <-l.closedq:
+		l.Unlock()
+		return errs.ErrClosed
+	default:
+		close(l.closedq)
+	}
+	l.Unlock()
+
 	if l.listener == nil {
 		return nil
 	}

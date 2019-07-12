@@ -134,12 +134,6 @@ func (l *listener) Listen(opts options.Options) error {
 }
 
 func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
-	select {
-	case <-l.closedq:
-		return nil, errs.ErrClosed
-	default:
-	}
-
 	if !l.t.isListening(l) {
 		// not in listening
 		return nil, transport.ErrNotListening

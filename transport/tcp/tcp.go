@@ -3,6 +3,7 @@ package tcp
 import (
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/webee/multisocket/errs"
 
@@ -21,6 +22,8 @@ type (
 		addr     *net.TCPAddr
 		bound    net.Addr
 		listener *net.TCPListener
+		sync.Mutex
+		closedq chan struct{}
 	}
 )
 
@@ -79,6 +82,12 @@ func (d *dialer) Dial(opts options.Options) (_ transport.Connection, err error) 
 }
 
 func (l *listener) Listen(opts options.Options) (err error) {
+	select {
+	case <-l.closedq:
+		return errs.ErrClosed
+	default:
+	}
+
 	l.listener, err = net.ListenTCP("tcp", l.addr)
 	if err == nil {
 		l.bound = l.listener.Addr()
@@ -87,6 +96,12 @@ func (l *listener) Listen(opts options.Options) (err error) {
 }
 
 func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
+	select {
+	case <-l.closedq:
+		return nil, errs.ErrClosed
+	default:
+	}
+
 	if l.listener == nil {
 		return nil, errs.ErrBadOperateState
 	}
@@ -110,6 +125,16 @@ func (l *listener) Address() string {
 }
 
 func (l *listener) Close() error {
+	l.Lock()
+	select {
+	case <-l.closedq:
+		l.Unlock()
+		return errs.ErrClosed
+	default:
+		close(l.closedq)
+	}
+	l.Unlock()
+
 	if l.listener == nil {
 		return nil
 	}

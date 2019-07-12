@@ -19,6 +19,8 @@ type (
 	listener struct {
 		path     string
 		listener net.Listener
+		sync.Mutex
+		closedq chan struct{}
 	}
 )
 
@@ -31,6 +33,12 @@ func (d *dialer) Dial(opts options.Options) (transport.Pipe, error) {
 }
 
 func (l *listener) Listen(opts options.Options) error {
+	select {
+	case <-l.closedq:
+		return errs.ErrClosed
+	default:
+	}
+
 	// remove exists named pipe file
 	path := l.addr.String()
 	if stat, err := os.Stat(path); err == nil {
@@ -61,6 +69,12 @@ func (l *listener) Listen(opts options.Options) error {
 }
 
 func (l *listener) Accept(opts options.Options) (mangos.TranPipe, error) {
+	select {
+	case <-l.closedq:
+		return nil, errs.ErrClosed
+	default:
+	}
+
 	if l.listener == nil {
 		return nil, errs.ErrBadOperateState
 	}
@@ -73,6 +87,16 @@ func (l *listener) Accept(opts options.Options) (mangos.TranPipe, error) {
 }
 
 func (l *listener) Close() error {
+	l.Lock()
+	select {
+	case <-l.closedq:
+		l.Unlock()
+		return errs.ErrClosed
+	default:
+		close(l.closedq)
+	}
+
+	l.Unlock()
 	if l.listener == nil {
 		return nil
 	}
