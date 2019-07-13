@@ -20,23 +20,30 @@ func newPoolInfo(sz int) *poolInfo {
 	}
 }
 
-var pools = []*poolInfo{
-	newPoolInfo(4),
-	newPoolInfo(8),
-	newPoolInfo(16),
-	newPoolInfo(32),
-	newPoolInfo(64),
-	newPoolInfo(128),
-	newPoolInfo(256),
-	newPoolInfo(512),
-	newPoolInfo(1024),
-	newPoolInfo(2 * 1024),
-	newPoolInfo(4 * 1024),
-	newPoolInfo(8 * 1024),
-	newPoolInfo(16 * 1024),
-	newPoolInfo(32 * 1024),
-	newPoolInfo(64 * 1024),
-	newPoolInfo(128 * 1024),
+var (
+	pools = []*poolInfo{
+		newPoolInfo(4),
+		newPoolInfo(8),
+		newPoolInfo(16),
+		newPoolInfo(32),
+		newPoolInfo(64),
+		newPoolInfo(128),
+		newPoolInfo(256),
+		newPoolInfo(512),
+		newPoolInfo(1024),
+		newPoolInfo(2 * 1024),
+		newPoolInfo(4 * 1024),
+		newPoolInfo(8 * 1024),
+		newPoolInfo(16 * 1024),
+	}
+	extraPools = []*poolInfo{}
+)
+
+func init() {
+	// 16KB as the increment unit
+	for i := 2; i <= 64; i++ {
+		pools = append(pools, newPoolInfo(i*8*1024))
+	}
 }
 
 // Alloc alloc bytes
