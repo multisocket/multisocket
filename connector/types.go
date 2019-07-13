@@ -48,6 +48,7 @@ type (
 
 		Dial() error
 		Close() error
+		TransportDialer() transport.Dialer
 	}
 
 	// Listener is for listening and accepting connections.
@@ -56,6 +57,7 @@ type (
 
 		Listen() error
 		Close() error
+		TransportListener() transport.Listener
 	}
 
 	// CoreAction is connector's core action

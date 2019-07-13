@@ -5,10 +5,12 @@ package ipc
 
 import (
 	"net"
+	"sync"
 
 	"github.com/Microsoft/go-winio"
 	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/options"
+	"github.com/webee/multisocket/transport"
 )
 
 type (
@@ -24,12 +26,12 @@ type (
 	}
 )
 
-func (d *dialer) Dial(opts options.Options) (transport.Pipe, error) {
+func (d *dialer) Dial(opts options.Options) (transport.Connection, error) {
 	conn, err := winio.DialPipe("\\\\.\\pipe\\"+d.path, nil)
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewConnection(Transport, conn)
+	return transport.NewConnection(Transport, conn, false)
 }
 
 func (l *listener) Listen(opts options.Options) error {
@@ -68,7 +70,7 @@ func (l *listener) Listen(opts options.Options) error {
 	return nil
 }
 
-func (l *listener) Accept(opts options.Options) (mangos.TranPipe, error) {
+func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
 	select {
 	case <-l.closedq:
 		return nil, errs.ErrClosed
@@ -83,7 +85,7 @@ func (l *listener) Accept(opts options.Options) (mangos.TranPipe, error) {
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewConnection(Transport, conn)
+	return transport.NewConnection(Transport, conn, true)
 }
 
 func (l *listener) Close() error {

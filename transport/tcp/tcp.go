@@ -78,7 +78,7 @@ func (d *dialer) Dial(opts options.Options) (_ transport.Connection, err error) 
 		return nil, err
 	}
 
-	return transport.NewConnection(Transport, conn)
+	return transport.NewConnection(Transport, conn, false)
 }
 
 func (l *listener) Listen(opts options.Options) (err error) {
@@ -114,7 +114,7 @@ func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
 		conn.Close()
 		return nil, err
 	}
-	return transport.NewConnection(Transport, conn)
+	return transport.NewConnection(Transport, conn, true)
 }
 
 func (l *listener) Address() string {

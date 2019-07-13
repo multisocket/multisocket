@@ -31,7 +31,7 @@ func (d *dialer) Dial(opts options.Options) (_ transport.Connection, err error) 
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewConnection(Transport, conn)
+	return transport.NewConnection(Transport, conn, false)
 }
 
 func (l *listener) Listen(opts options.Options) error {
@@ -78,7 +78,7 @@ func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewConnection(Transport, conn)
+	return transport.NewConnection(Transport, conn, true)
 }
 
 // Close implements the PipeListener Close method.

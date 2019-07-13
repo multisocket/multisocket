@@ -15,7 +15,7 @@ type listener struct {
 
 	parent *connector
 	addr   string
-	l      transport.Listener
+	transport.Listener
 	sync.Mutex
 	closed bool
 
@@ -24,11 +24,11 @@ type listener struct {
 
 func newListener(parent *connector, addr string, tl transport.Listener, ovs options.OptionValues) *listener {
 	return &listener{
-		Options: options.NewOptionsWithValues(ovs),
-		parent:  parent,
-		addr:    addr,
-		l:       tl,
-		closed:  false,
+		Options:  options.NewOptionsWithValues(ovs),
+		parent:   parent,
+		addr:     addr,
+		Listener: tl,
+		closed:   false,
 	}
 }
 
@@ -67,7 +67,7 @@ func (l *listener) serve() {
 	for {
 		// If the underlying PipeListener is closed, or not
 		// listening, we expect to return back with an error.
-		if tc, err := l.l.Accept(l.Options); err == errs.ErrClosed {
+		if tc, err := l.Listener.Accept(l.Options); err == errs.ErrClosed {
 			break
 		} else if err == nil {
 			if l.isStopped() {
@@ -87,7 +87,7 @@ func (l *listener) serve() {
 }
 
 func (l *listener) Listen() error {
-	if err := l.l.Listen(l.Options); err != nil {
+	if err := l.Listener.Listen(l.Options); err != nil {
 		return err
 	}
 
@@ -102,5 +102,9 @@ func (l *listener) Close() error {
 		return errs.ErrClosed
 	}
 	l.closed = true
-	return l.l.Close()
+	return l.Listener.Close()
+}
+
+func (l *listener) TransportListener() transport.Listener {
+	return l.Listener
 }

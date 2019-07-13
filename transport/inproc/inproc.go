@@ -112,7 +112,7 @@ func (d *dialer) Dial(opts options.Options) (transport.Connection, error) {
 	case <-l.closedq:
 		return nil, transport.ErrConnRefused
 	case dc := <-ac:
-		return transport.NewConnection(d.t, dc)
+		return transport.NewConnection(d.t, dc, false)
 	}
 }
 
@@ -165,7 +165,7 @@ func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
 		case ac <- dc:
 		}
 
-		return transport.NewConnection(l.t, lc)
+		return transport.NewConnection(l.t, lc, true)
 	}
 }
 

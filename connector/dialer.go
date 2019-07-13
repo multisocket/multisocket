@@ -15,7 +15,7 @@ type dialer struct {
 	options.Options
 	parent *connector
 	addr   string
-	d      transport.Dialer
+	transport.Dialer
 
 	sync.Mutex
 	closedq    chan struct{}
@@ -32,7 +32,7 @@ func newDialer(parent *connector, addr string, td transport.Dialer, ovs options.
 		Options: options.NewOptionsWithValues(ovs),
 		parent:  parent,
 		addr:    addr,
-		d:       td,
+		Dialer:  td,
 		closedq: make(chan struct{}),
 	}
 }
@@ -174,7 +174,7 @@ func (d *dialer) dial(redial bool) error {
 		raw := Options.Pipe.Raw.ValueFrom(d.Options)
 		log.WithFields(log.Fields{"addr": d.addr, "action": "start", "raw": raw}).Debug("dial")
 	}
-	tc, err := d.d.Dial(d.Options)
+	tc, err := d.Dialer.Dial(d.Options)
 	if err == nil {
 		if log.IsLevelEnabled(log.DebugLevel) {
 			raw := Options.Pipe.Raw.ValueFrom(d.Options)
@@ -233,4 +233,8 @@ func (d *dialer) dial(redial bool) error {
 
 func (d *dialer) redial() {
 	d.dial(true)
+}
+
+func (d *dialer) TransportDialer() transport.Dialer {
+	return d.Dialer
 }
