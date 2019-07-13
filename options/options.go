@@ -43,8 +43,19 @@ type (
 		optionChangeHook OptionChangeHook
 	}
 
-	baseOption struct {
+	// BaseOption is the base of specific options
+	BaseOption struct {
 		defaultValue interface{}
+	}
+
+	// AnyOption is option with any value.
+	AnyOption interface {
+		Option
+		ValueFrom(optss ...Options) interface{}
+	}
+
+	anyOption struct {
+		BaseOption
 	}
 
 	// BoolOption is option with bool value.
@@ -55,7 +66,7 @@ type (
 	}
 
 	boolOption struct {
-		baseOption
+		BaseOption
 	}
 
 	// StringOption is option with string value.
@@ -66,7 +77,7 @@ type (
 	}
 
 	stringOption struct {
-		baseOption
+		BaseOption
 	}
 
 	// TimeDurationOption is option with time duration value.
@@ -77,7 +88,7 @@ type (
 	}
 
 	timeDurationOption struct {
-		baseOption
+		BaseOption
 	}
 
 	// IntOption is option with int value.
@@ -88,7 +99,7 @@ type (
 	}
 
 	intOption struct {
-		baseOption
+		BaseOption
 	}
 
 	// Uint8Option is option with uint8 value.
@@ -99,7 +110,7 @@ type (
 	}
 
 	uint8Option struct {
-		baseOption
+		BaseOption
 	}
 
 	// Uint16Option is option with uint16 value.
@@ -110,7 +121,7 @@ type (
 	}
 
 	uint16Option struct {
-		baseOption
+		BaseOption
 	}
 
 	// Uint32Option is option with uint32 value.
@@ -121,7 +132,7 @@ type (
 	}
 
 	uint32Option struct {
-		baseOption
+		BaseOption
 	}
 
 	// Int32Option is option with int32 value.
@@ -132,7 +143,7 @@ type (
 	}
 
 	int32Option struct {
-		baseOption
+		BaseOption
 	}
 )
 
@@ -349,11 +360,12 @@ func (opts *options) OptionValues() (res OptionValues) {
 	return
 }
 
-func (o *baseOption) String() string {
+func (o *BaseOption) String() string {
 	return fmt.Sprintf("<%T:%v>", o.defaultValue, o.defaultValue)
 }
 
-func (o *baseOption) DefaultValue() interface{} {
+// DefaultValue returns the default option value.
+func (o *BaseOption) DefaultValue() interface{} {
 	return o.defaultValue
 }
 
@@ -367,9 +379,27 @@ func valueFrom(opt Option, optss ...Options) interface{} {
 	return opt.DefaultValue()
 }
 
+// NewAnyOption create an any option
+func NewAnyOption(val interface{}) AnyOption {
+	return &anyOption{BaseOption{val}}
+}
+
+// Validate validate the option value
+func (o *anyOption) Validate(val interface{}) (newVal interface{}, err error) {
+	return val, nil
+}
+
+func (o *anyOption) Parse(s string) (val interface{}, err error) {
+	return s, nil
+}
+
+func (o *anyOption) ValueFrom(optss ...Options) interface{} {
+	return valueFrom(o, optss...)
+}
+
 // NewBoolOption create a bool option
 func NewBoolOption(val bool) BoolOption {
-	return &boolOption{baseOption{val}}
+	return &boolOption{BaseOption{val}}
 }
 
 // Validate validate the option value
@@ -405,7 +435,7 @@ func (o *boolOption) ValueFrom(optss ...Options) bool {
 
 // NewStringOption create a string option
 func NewStringOption(val string) StringOption {
-	return &stringOption{baseOption{val}}
+	return &stringOption{BaseOption{val}}
 }
 
 // Validate validate the option value
@@ -433,7 +463,7 @@ func (o *stringOption) ValueFrom(optss ...Options) string {
 
 // NewTimeDurationOption create a time duration option
 func NewTimeDurationOption(name time.Duration) TimeDurationOption {
-	return &timeDurationOption{baseOption{name}}
+	return &timeDurationOption{BaseOption{name}}
 }
 
 // Validate validate the option value
@@ -464,7 +494,7 @@ func (o *timeDurationOption) ValueFrom(optss ...Options) time.Duration {
 
 // NewIntOption create an int option
 func NewIntOption(val int) IntOption {
-	return &intOption{baseOption{val}}
+	return &intOption{BaseOption{val}}
 }
 
 // Validate validate the option value
@@ -498,7 +528,7 @@ func (o *intOption) ValueFrom(optss ...Options) int {
 
 // NewUint8Option create an uint8 option
 func NewUint8Option(val uint8) Uint8Option {
-	return &uint8Option{baseOption{val}}
+	return &uint8Option{BaseOption{val}}
 }
 
 // Validate validate the option value
@@ -542,7 +572,7 @@ func (o *uint8Option) ValueFrom(optss ...Options) uint8 {
 
 // NewUint16Option create an uint16 option
 func NewUint16Option(val uint16) Uint16Option {
-	return &uint16Option{baseOption{val}}
+	return &uint16Option{BaseOption{val}}
 }
 
 // Validate validate the option value
@@ -586,7 +616,7 @@ func (o *uint16Option) ValueFrom(optss ...Options) uint16 {
 
 // NewUint32Option create an uint32 option
 func NewUint32Option(val uint32) Uint32Option {
-	return &uint32Option{baseOption{val}}
+	return &uint32Option{BaseOption{val}}
 }
 
 // Validate validate the option value
@@ -630,7 +660,7 @@ func (o *uint32Option) ValueFrom(optss ...Options) uint32 {
 
 // NewInt32Option create an int32 option
 func NewInt32Option(val int32) Int32Option {
-	return &int32Option{baseOption{val}}
+	return &int32Option{BaseOption{val}}
 }
 
 // Validate validate the option value
