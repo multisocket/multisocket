@@ -1,5 +1,6 @@
 package errs
 
+// Err is the error type
 type Err string
 
 func (e Err) Error() string {
@@ -16,5 +17,6 @@ const (
 	ErrOperationNotSupported = Err("operation not supported")
 	ErrBadTransport          = Err("invalid or unsupported transport")
 	ErrBadMsg                = Err("bad message")
+	ErrBadProtocol           = Err("bad protocol")
 	ErrContentTooLong        = Err("content is too long")
 )
