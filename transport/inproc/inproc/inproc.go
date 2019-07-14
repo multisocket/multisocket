@@ -2,10 +2,10 @@ package inproc
 
 import (
 	"github.com/webee/multisocket/transport"
-	"github.com/webee/multisocket/transport/inproc/iopipe"
+	"github.com/webee/multisocket/transport/inproc/channel"
 )
 
 func init() {
 	// as default inproc transport
-	transport.RegisterTransportWithScheme(iopipe.Transport, "inproc")
+	transport.RegisterTransportWithScheme(channel.Transport, "inproc")
 }
