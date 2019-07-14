@@ -3,14 +3,17 @@ package test
 import (
 	"math/rand"
 	"testing"
+	"time"
 
 	"bytes"
 
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/address"
 	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/message"
 	"github.com/webee/multisocket/options"
+	"github.com/webee/multisocket/sender"
 	_ "github.com/webee/multisocket/transport/all"
 )
 
@@ -43,6 +46,25 @@ func TestSocketMaxRecvContentLength(t *testing.T) {
 				t.Run(tp.name, func(t *testing.T) {
 					addr := tp.addr
 					testSocketMaxRecvContentLength(t, addr, sz)
+				})
+			}
+		})
+	}
+}
+
+func TestSocketCloseSender(t *testing.T) {
+	for idx := range sizes {
+		size := sizes[idx]
+		if size.sz < 10 {
+			continue
+		}
+		t.Run(size.name, func(t *testing.T) {
+			sz := size.sz
+			for idx := range transports {
+				tp := transports[idx]
+				t.Run(tp.name, func(t *testing.T) {
+					addr := tp.addr
+					testSocketCloseSender(t, addr, sz)
 				})
 			}
 		})
@@ -150,4 +172,61 @@ func testSocketMaxRecvContentLength(t *testing.T, addr string, sz int) {
 		}
 	}
 	<-done
+}
+
+func testSocketCloseSender(t *testing.T, addr string, sz int) {
+	var (
+		err     error
+		sa      address.MultiSocketAddress
+		srvsock multisocket.Socket
+		clisock multisocket.Socket
+	)
+
+	if sa, err = address.ParseMultiSocketAddress(addr); err != nil {
+		t.Errorf("parse address error: %s", err)
+	}
+
+	srvsock = multisocket.NewDefault()
+	clisock = multisocket.NewDefault()
+	clisock.GetSender().SetOption(sender.Options.SendQueueSize, 6400)
+	if err = sa.Listen(srvsock); err != nil {
+		t.Errorf("server listen error: %s", err)
+	}
+	if err = sa.Dial(clisock); err != nil {
+		t.Errorf("client dial error: %s", err)
+	}
+
+	N := 10000
+	go func() {
+		szMin := sz / 2
+		for i := 0; i < N; i++ {
+			content := genRandomContent(szMin + rand.Intn(szMin+1))
+			if err = clisock.Send(content); err != nil {
+				t.Errorf("Send error: %s", err)
+				break
+			}
+		}
+		clisock.Close()
+		time.AfterFunc(100*time.Millisecond, func() {
+			srvsock.Close()
+		})
+	}()
+
+	var (
+		msg *message.Message
+	)
+	count := 0
+	for {
+		if msg, err = srvsock.RecvMsg(); err != nil {
+			if err != errs.ErrClosed {
+				t.Errorf("RecvMsg error: %s", err)
+			}
+			break
+		}
+		msg.FreeAll()
+		count++
+	}
+	if count != N {
+		t.Errorf("%d messages dropped after sender closed!!", N-count)
+	}
 }

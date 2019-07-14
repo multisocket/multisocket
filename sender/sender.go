@@ -205,9 +205,8 @@ func (s *sender) run(p *pipe) {
 	}
 
 	var (
-		err          error
-		msg          *message.Message
-		senderClosed bool
+		err error
+		msg *message.Message
 	)
 
 	sendq := s.sendq
@@ -221,7 +220,21 @@ SENDING:
 	for {
 		select {
 		case <-s.closedq:
-			senderClosed = true
+			// send remaining messages
+		SEND_REMAINING:
+			for {
+				select {
+				case msg = <-sendq:
+					if err = s.doSendMsg(p, msg, freeAll); err != nil {
+						break SEND_REMAINING
+					}
+				case <-s.closetq:
+					// timeout
+					break SEND_REMAINING
+				default:
+					break SEND_REMAINING
+				}
+			}
 			break SENDING
 		case <-p.stopq:
 			break SENDING
@@ -233,24 +246,6 @@ SENDING:
 			break SENDING
 		}
 	}
-	if senderClosed {
-		// send remaining messages
-	SEND_REMAINING:
-		for {
-			select {
-			case msg = <-sendq:
-				if err = s.doSendMsg(p, msg, freeAll); err != nil {
-					break SEND_REMAINING
-				}
-			case <-s.closetq:
-				// timeout
-				break SEND_REMAINING
-			default:
-				break SEND_REMAINING
-			}
-		}
-	}
-
 	// seems can be moved to case <-s.closedq
 	s.remPipe(p.ID())
 	if log.IsLevelEnabled(log.DebugLevel) {
