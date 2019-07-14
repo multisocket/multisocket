@@ -370,10 +370,15 @@ func (msg *Message) Dup() (dup *Message) {
 	return dup
 }
 
-// FreeAll put msg and buf to pools
+// FreeAll put buf and msg to pools
 func (msg *Message) FreeAll() {
 	bytespool.Free(msg.buf)
 
+	msg.Free()
+}
+
+// Free put msg to pool
+func (msg *Message) Free() {
 	msg.buf = nil
 	msg.Header = emptyHeader
 	msg.Source = nil

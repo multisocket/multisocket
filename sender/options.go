@@ -1,6 +1,8 @@
 package sender
 
 import (
+	"time"
+
 	"github.com/webee/multisocket/message"
 	"github.com/webee/multisocket/options"
 )
@@ -10,6 +12,7 @@ type (
 		TTL            options.Uint8Option
 		SendQueueSize  options.Uint16Option
 		SendBestEffort options.BoolOption
+		CloseTimeout   options.TimeDurationOption
 	}
 )
 
@@ -21,6 +24,7 @@ var (
 		TTL:            options.NewUint8Option(message.DefaultMsgTTL),
 		SendQueueSize:  options.NewUint16Option(64),
 		SendBestEffort: options.NewBoolOption(false),
+		CloseTimeout:   options.NewTimeDurationOption(5 * time.Second),
 	}
 )
 

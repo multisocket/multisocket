@@ -7,8 +7,11 @@ import (
 	"github.com/webee/multisocket/errs"
 	"github.com/webee/multisocket/message"
 
+	"time"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/webee/multisocket/options"
+	"github.com/webee/multisocket/utils"
 )
 
 type (
@@ -20,6 +23,8 @@ type (
 		closedq            chan struct{}
 		attachedConnectors map[connector.Connector]struct{}
 		pipes              map[uint32]*pipe
+		wg                 *sync.WaitGroup
+		closetq            <-chan time.Time
 	}
 
 	pipe struct {
@@ -40,6 +45,7 @@ func NewWithOptions(ovs options.OptionValues) Sender {
 		attachedConnectors: make(map[connector.Connector]struct{}),
 		closedq:            make(chan struct{}),
 		pipes:              make(map[uint32]*pipe),
+		wg:                 &sync.WaitGroup{},
 	}
 	s.Options = options.NewOptions().SetOptionChangeHook(s.onOptionChange)
 	for opt, val := range ovs {
@@ -114,6 +120,10 @@ func (s *sender) bestEffort() bool {
 	return s.GetOptionDefault(Options.SendBestEffort).(bool)
 }
 
+func (s *sender) closeTimeout() time.Duration {
+	return s.GetOptionDefault(Options.CloseTimeout).(time.Duration)
+}
+
 func (s *sender) HandlePipeEvent(e connector.PipeEvent, pipe connector.Pipe) {
 	switch e {
 	case connector.PipeEventAdd:
@@ -141,19 +151,37 @@ func (s *sender) remPipe(id uint32) {
 	delete(s.pipes, id)
 	s.Unlock()
 
-	p.stop()
+	s.stopPipe(p)
 }
 
-func (p *pipe) stop() {
+func (s *sender) stopPipe(p *pipe) {
 	close(p.stopq)
+	freeAll := p.Transport().Scheme() != "inproc.channel"
+	tm := utils.NewTimerWithDuration(s.closeTimeout())
+	defer tm.Stop()
 DRAIN_MSG_LOOP:
 	for {
 		select {
-		case <-p.sendq:
-			// send to dest/all msgs, just drop
-			// TODO: maybe free msg bytes.
-		default:
+		case <-s.closetq:
 			break DRAIN_MSG_LOOP
+		case <-tm.C:
+			break DRAIN_MSG_LOOP
+		case msg := <-p.sendq:
+			// send to dest/all msgs
+			if err := s.doSendMsg(p, msg, freeAll); err != nil {
+				break DRAIN_MSG_LOOP
+			}
+		default:
+			return
+		}
+	}
+	// drop last
+	for {
+		select {
+		case msg := <-p.sendq:
+			msg.FreeAll()
+		default:
+			return
 		}
 	}
 }
@@ -163,10 +191,13 @@ func (s *sender) resendMsg(msg *message.Message) error {
 		// only resend when send to one, so we can choose another pipe to send.
 		return s.doPushMsg(msg, s.sendq)
 	}
-	return nil
+	return errs.ErrBadMsg
 }
 
 func (s *sender) run(p *pipe) {
+	// start
+	s.wg.Add(1)
+
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "sender").
 			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
@@ -174,8 +205,9 @@ func (s *sender) run(p *pipe) {
 	}
 
 	var (
-		err error
-		msg *message.Message
+		err          error
+		msg          *message.Message
+		senderClosed bool
 	)
 
 	sendq := s.sendq
@@ -183,10 +215,13 @@ func (s *sender) run(p *pipe) {
 		// raw pipe should not recv send to one messages.
 		sendq = nil
 	}
+	// TODO: use a better way to support inproc.channel like transport: free payload internal
+	freeAll := p.Transport().Scheme() != "inproc.channel"
 SENDING:
 	for {
 		select {
 		case <-s.closedq:
+			senderClosed = true
 			break SENDING
 		case <-p.stopq:
 			break SENDING
@@ -194,23 +229,28 @@ SENDING:
 		case msg = <-p.sendq:
 		}
 
-		if err = p.SendMsg(msg); err != nil {
-			if log.IsLevelEnabled(log.DebugLevel) {
-				log.WithField("domain", "sender").
-					WithError(err).
-					WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
-					Error("sendMsg")
-			}
-			if errx := s.resendMsg(msg); errx != nil {
-				// free
-				msg.FreeAll()
-			}
-
+		if err = s.doSendMsg(p, msg, freeAll); err != nil {
 			break SENDING
 		}
-		// free
-		msg.FreeAll()
 	}
+	if senderClosed {
+		// send remaining messages
+	SEND_REMAINING:
+		for {
+			select {
+			case msg = <-sendq:
+				if err = s.doSendMsg(p, msg, freeAll); err != nil {
+					break SEND_REMAINING
+				}
+			case <-s.closetq:
+				// timeout
+				break SEND_REMAINING
+			default:
+				break SEND_REMAINING
+			}
+		}
+	}
+
 	// seems can be moved to case <-s.closedq
 	s.remPipe(p.ID())
 	if log.IsLevelEnabled(log.DebugLevel) {
@@ -218,6 +258,32 @@ SENDING:
 			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
 			Debug("sender stopped run")
 	}
+	// done
+	s.wg.Done()
+}
+
+func (s *sender) doSendMsg(p *pipe, msg *message.Message, freeAll bool) (err error) {
+	if err = p.SendMsg(msg); err != nil {
+		if log.IsLevelEnabled(log.DebugLevel) {
+			log.WithField("domain", "sender").
+				WithError(err).
+				WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
+				Error("sendMsg")
+		}
+
+		if s.resendMsg(msg) == nil {
+			return
+		}
+		msg.FreeAll()
+		return
+	}
+	if freeAll {
+		// free all
+		msg.FreeAll()
+	} else {
+		msg.Free()
+	}
+	return
 }
 
 func (s *sender) sendTo(msg *message.Message) (err error) {
@@ -282,6 +348,7 @@ func (s *sender) Close() {
 		s.Unlock()
 		return
 	default:
+		s.closetq = time.After(s.closeTimeout())
 		close(s.closedq)
 	}
 	connectors := make([]connector.Connector, 0, len(s.attachedConnectors))
@@ -294,5 +361,25 @@ func (s *sender) Close() {
 	// unregister
 	for _, conns := range connectors {
 		conns.UnregisterPipeEventHandler(s)
+	}
+
+	// wait all pipes to stop
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		done <- struct{}{}
+	}()
+	select {
+	case <-done:
+	case <-s.closetq:
+	}
+	for {
+		// drop remaining messages
+		select {
+		case msg := <-s.sendq:
+			msg.FreeAll()
+		default:
+			return
+		}
 	}
 }

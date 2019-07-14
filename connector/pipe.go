@@ -25,6 +25,10 @@ type pipe struct {
 	d                    *dialer
 	l                    *listener
 
+	// funcs
+	recvMsgFunc func() (msg *message.Message, err error)
+	sendMsgFunc func(msg *message.Message) (err error)
+
 	// for read message header
 	headerBuf []byte
 	// for recv raw message
@@ -59,7 +63,11 @@ func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener,
 
 		headerBuf: make([]byte, message.HeaderSize),
 	}
+	p.sendMsgFunc = p.sendMsg
+	p.recvMsgFunc = p.recvMsg
 	if p.raw {
+		p.sendMsgFunc = p.sendRawMsg
+		p.recvMsgFunc = p.recvRawMsg
 		// alloc
 		p.rawRecvBuf = make([]byte, p.GetOptionDefault(Options.Pipe.RawRecvBufSize).(int))
 	}
@@ -129,10 +137,7 @@ func (p *pipe) Writev(v ...[]byte) (n int64, err error) {
 }
 
 func (p *pipe) SendMsg(msg *message.Message) (err error) {
-	if p.raw {
-		return p.sendRawMsg(msg)
-	}
-	return p.sendMsg(msg)
+	return p.sendMsgFunc(msg)
 }
 
 func (p *pipe) sendMsg(msg *message.Message) (err error) {
@@ -161,10 +166,7 @@ func (p *pipe) sendRawMsg(msg *message.Message) (err error) {
 }
 
 func (p *pipe) RecvMsg() (msg *message.Message, err error) {
-	if p.raw {
-		return p.recvRawMsg()
-	}
-	return p.recvMsg()
+	return p.recvMsgFunc()
 }
 
 func (p *pipe) recvMsg() (msg *message.Message, err error) {

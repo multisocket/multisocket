@@ -66,11 +66,11 @@ func (s *socket) Close() error {
 	s.closed = true
 	s.Unlock()
 
-	s.Connector.Close()
 	s.Receiver.Close()
 	if s.Sender != nil {
 		s.Sender.Close()
 	}
+	s.Connector.Close()
 
 	return nil
 }
