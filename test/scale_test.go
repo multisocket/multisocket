@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/webee/multisocket"
-	"github.com/webee/multisocket/message"
-	_ "github.com/webee/multisocket/transport/inproc"
+	"github.com/multisocket/multisocket"
+	"github.com/multisocket/multisocket/message"
+	_ "github.com/multisocket/multisocket/transport/inproc"
 )
 
 func scalabilityClient(t *testing.T, idx int, errp *error, loops int, wg, connWg *sync.WaitGroup) {

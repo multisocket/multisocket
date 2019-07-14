@@ -4,9 +4,9 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/webee/multisocket"
-	"github.com/webee/multisocket/address"
-	"github.com/webee/multisocket/options"
+	"github.com/multisocket/multisocket"
+	"github.com/multisocket/multisocket/address"
+	"github.com/multisocket/multisocket/options"
 )
 
 var (

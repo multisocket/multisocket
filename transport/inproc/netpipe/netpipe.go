@@ -3,9 +3,9 @@ package netpipe
 import (
 	"net"
 
-	"github.com/webee/multisocket/options"
-	"github.com/webee/multisocket/transport"
-	"github.com/webee/multisocket/transport/inproc"
+	"github.com/multisocket/multisocket/options"
+	"github.com/multisocket/multisocket/transport"
+	"github.com/multisocket/multisocket/transport/inproc"
 )
 
 var (

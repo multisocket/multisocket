@@ -2,16 +2,15 @@ package sender
 
 import (
 	"sync"
-
-	"github.com/webee/multisocket/connector"
-	"github.com/webee/multisocket/errs"
-	"github.com/webee/multisocket/message"
-
 	"time"
 
+	"github.com/multisocket/multisocket/connector"
+	"github.com/multisocket/multisocket/errs"
+	"github.com/multisocket/multisocket/message"
+
 	log "github.com/sirupsen/logrus"
-	"github.com/webee/multisocket/options"
-	"github.com/webee/multisocket/utils"
+	"github.com/multisocket/multisocket/options"
+	"github.com/multisocket/multisocket/utils"
 )
 
 type (

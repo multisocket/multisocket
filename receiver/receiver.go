@@ -3,13 +3,13 @@ package receiver
 import (
 	"sync"
 
-	"github.com/webee/multisocket/connector"
+	"github.com/multisocket/multisocket/connector"
 
-	"github.com/webee/multisocket/errs"
+	"github.com/multisocket/multisocket/errs"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/webee/multisocket/message"
-	"github.com/webee/multisocket/options"
+	"github.com/multisocket/multisocket/message"
+	"github.com/multisocket/multisocket/options"
 )
 
 type (

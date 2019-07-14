@@ -1,4 +1,4 @@
-module github.com/webee/multisocket
+module github.com/multisocket/multisocket
 
 go 1.12
 

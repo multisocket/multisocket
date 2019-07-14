@@ -23,10 +23,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/webee/multisocket"
-	"github.com/webee/multisocket/message"
-	_ "github.com/webee/multisocket/transport/all"
-	"github.com/webee/multisocket/transport/tcp"
+	"github.com/multisocket/multisocket"
+	"github.com/multisocket/multisocket/message"
+	_ "github.com/multisocket/multisocket/transport/all"
+	"github.com/multisocket/multisocket/transport/tcp"
 )
 
 // ReqRepLatencyServer is the server side for REQ/REP latency testing.

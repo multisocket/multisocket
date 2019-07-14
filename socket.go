@@ -3,11 +3,11 @@ package multisocket
 import (
 	"sync"
 
-	"github.com/webee/multisocket/connector"
-	"github.com/webee/multisocket/errs"
-	"github.com/webee/multisocket/options"
-	"github.com/webee/multisocket/receiver"
-	"github.com/webee/multisocket/sender"
+	"github.com/multisocket/multisocket/connector"
+	"github.com/multisocket/multisocket/errs"
+	"github.com/multisocket/multisocket/options"
+	"github.com/multisocket/multisocket/receiver"
+	"github.com/multisocket/multisocket/sender"
 )
 
 type socket struct {

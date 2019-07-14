@@ -1,7 +1,7 @@
 package ipc
 
 import (
-	"github.com/webee/multisocket/transport"
+	"github.com/multisocket/multisocket/transport"
 )
 
 type (

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/webee/multisocket/options"
+	"github.com/multisocket/multisocket/options"
 )
 
 type (

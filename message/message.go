@@ -6,9 +6,9 @@ import (
 	"io/ioutil"
 	"sync"
 
-	"github.com/webee/multisocket/errs"
+	"github.com/multisocket/multisocket/errs"
 
-	"github.com/webee/multisocket/bytespool"
+	"github.com/multisocket/multisocket/bytespool"
 )
 
 const (

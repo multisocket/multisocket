@@ -4,12 +4,12 @@ import (
 	"io"
 	"sync"
 
-	"github.com/webee/multisocket/message"
-	"github.com/webee/multisocket/options"
+	"github.com/multisocket/multisocket/message"
+	"github.com/multisocket/multisocket/options"
 
-	"github.com/webee/multisocket/errs"
-	"github.com/webee/multisocket/transport"
-	"github.com/webee/multisocket/utils"
+	"github.com/multisocket/multisocket/errs"
+	"github.com/multisocket/multisocket/transport"
+	"github.com/multisocket/multisocket/utils"
 )
 
 // pipe wraps the transport.Connection data structure with the stuff we need to keep.

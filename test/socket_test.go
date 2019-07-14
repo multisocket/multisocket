@@ -7,14 +7,14 @@ import (
 
 	"bytes"
 
-	"github.com/webee/multisocket"
-	"github.com/webee/multisocket/address"
-	"github.com/webee/multisocket/connector"
-	"github.com/webee/multisocket/errs"
-	"github.com/webee/multisocket/message"
-	"github.com/webee/multisocket/options"
-	"github.com/webee/multisocket/sender"
-	_ "github.com/webee/multisocket/transport/all"
+	"github.com/multisocket/multisocket"
+	"github.com/multisocket/multisocket/address"
+	"github.com/multisocket/multisocket/connector"
+	"github.com/multisocket/multisocket/errs"
+	"github.com/multisocket/multisocket/message"
+	"github.com/multisocket/multisocket/options"
+	"github.com/multisocket/multisocket/sender"
+	_ "github.com/multisocket/multisocket/transport/all"
 )
 
 func TestSocketSendRecv(t *testing.T) {

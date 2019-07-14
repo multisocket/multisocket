@@ -1,8 +1,8 @@
 package inproc
 
 import (
-	"github.com/webee/multisocket/transport"
-	"github.com/webee/multisocket/transport/inproc/channel"
+	"github.com/multisocket/multisocket/transport"
+	"github.com/multisocket/multisocket/transport/inproc/channel"
 )
 
 func init() {

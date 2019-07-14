@@ -1,8 +1,8 @@
 package ws
 
 import (
-	"github.com/webee/multisocket/options"
-	"github.com/webee/multisocket/transport"
+	"github.com/multisocket/multisocket/options"
+	"github.com/multisocket/multisocket/transport"
 )
 
 type (

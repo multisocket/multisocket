@@ -23,9 +23,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/webee/multisocket"
-	_ "github.com/webee/multisocket/transport/all"
-	"github.com/webee/multisocket/transport/tcp"
+	"github.com/multisocket/multisocket"
+	_ "github.com/multisocket/multisocket/transport/all"
+	"github.com/multisocket/multisocket/transport/tcp"
 )
 
 // ThroughputServer is the server side -- very much equivalent to local_thr in

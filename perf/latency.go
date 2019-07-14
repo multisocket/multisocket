@@ -23,10 +23,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/webee/multisocket"
-	"github.com/webee/multisocket/message"
-	_ "github.com/webee/multisocket/transport/all"
-	"github.com/webee/multisocket/transport/tcp"
+	"github.com/multisocket/multisocket"
+	"github.com/multisocket/multisocket/message"
+	_ "github.com/multisocket/multisocket/transport/all"
+	"github.com/multisocket/multisocket/transport/tcp"
 )
 
 // LatencyServer is the server side -- very much equivalent to local_lat in

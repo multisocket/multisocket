@@ -1,7 +1,7 @@
 package receiver
 
 import (
-	"github.com/webee/multisocket/options"
+	"github.com/multisocket/multisocket/options"
 )
 
 type (

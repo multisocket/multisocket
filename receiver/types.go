@@ -1,9 +1,9 @@
 package receiver
 
 import (
-	"github.com/webee/multisocket/connector"
-	"github.com/webee/multisocket/message"
-	"github.com/webee/multisocket/options"
+	"github.com/multisocket/multisocket/connector"
+	"github.com/multisocket/multisocket/message"
+	"github.com/multisocket/multisocket/options"
 )
 
 type (

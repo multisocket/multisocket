@@ -1,7 +1,7 @@
 package connector
 
 import (
-	"github.com/webee/multisocket/errs"
+	"github.com/multisocket/multisocket/errs"
 )
 
 // errors

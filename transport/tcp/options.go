@@ -3,9 +3,9 @@ package tcp
 import (
 	"time"
 
-	"github.com/webee/multisocket/transport"
+	"github.com/multisocket/multisocket/transport"
 
-	"github.com/webee/multisocket/options"
+	"github.com/multisocket/multisocket/options"
 )
 
 type (

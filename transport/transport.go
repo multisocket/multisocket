@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/webee/multisocket/errs"
+	"github.com/multisocket/multisocket/errs"
 )
 
 // StripScheme removes the leading scheme (such as "http://") from an address

@@ -3,8 +3,8 @@ package sender
 import (
 	"time"
 
-	"github.com/webee/multisocket/message"
-	"github.com/webee/multisocket/options"
+	"github.com/multisocket/multisocket/message"
+	"github.com/multisocket/multisocket/options"
 )
 
 type (
