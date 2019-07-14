@@ -17,6 +17,13 @@ func NewTimer() *Timer {
 	return new(Timer)
 }
 
+// NewTimerWithDuration create a timer with duration
+func NewTimerWithDuration(d time.Duration) *Timer {
+	t := new(Timer)
+	t.Reset(d)
+	return t
+}
+
 func (t *Timer) stop() {
 	if !t.tm.Stop() {
 		select {
