@@ -18,7 +18,7 @@ type (
 		multisocket.Socket
 		timeout time.Duration
 
-		sync.Mutex
+		sync.RWMutex
 		closedq  chan struct{}
 		reqID    uint32
 		requests map[uint32]*Request
@@ -68,12 +68,15 @@ func (r *req) run() {
 			break
 		}
 		requestID := binary.BigEndian.Uint32(content)
+		r.RLock()
 		if request, ok = r.requests[requestID]; !ok {
+			r.RUnlock()
 			if log.IsLevelEnabled(log.DebugLevel) {
 				log.WithField("requestID", requestID).WithField("action", "miss").Warn("recv")
 			}
 			continue
 		}
+		r.RUnlock()
 		r.Lock()
 		delete(r.requests, requestID)
 		r.Unlock()

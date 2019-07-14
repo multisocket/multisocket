@@ -14,6 +14,7 @@ import (
 	"github.com/webee/multisocket"
 	"github.com/webee/multisocket/examples"
 	_ "github.com/webee/multisocket/transport/all"
+	"time"
 )
 
 func init() {
@@ -71,6 +72,7 @@ func server(addrs ...address.MultiSocketAddress) {
 			} else {
 				s := string(msg.Content)
 				content := []byte(fmt.Sprintf("[#%d]Hello, %s", n, s))
+				log.Debugf("to send: %s", string(content))
 				if err = sock.SendTo(msg.Source, content); err != nil {
 					log.WithField("err", err).Errorf("send")
 				}
@@ -101,7 +103,7 @@ func client(name string, addr address.MultiSocketAddress) {
 				log.WithField("err", err).Errorf("send")
 			}
 			log.WithField("id", idx).Infof("send")
-			// time.Sleep(10 * time.Millisecond)
+			time.Sleep(1 * time.Second)
 			idx++
 		}
 	}()

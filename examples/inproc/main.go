@@ -9,6 +9,7 @@ import (
 	_ "github.com/webee/multisocket/transport/all"
 
 	"github.com/webee/multisocket"
+	"github.com/webee/multisocket/address"
 	"github.com/webee/multisocket/connector"
 	"github.com/webee/multisocket/examples"
 	"github.com/webee/multisocket/receiver"
@@ -24,9 +25,9 @@ func init() {
 }
 
 func main() {
-	scheme := "inproc"
+	addr := "inproc://producer"
 	if len(os.Args) > 1 {
-		scheme += "." + os.Args[1]
+		addr = os.Args[1]
 	}
 
 	produceSock := multisocket.New(connector.New(), sender.New(), nil)
@@ -36,11 +37,14 @@ func main() {
 	go consume(0, consumeSock)
 	go consume(1, consumeSock)
 
-	addr := scheme + "://producer"
-	if err := produceSock.Listen(addr); err != nil {
+	sa, err := address.ParseMultiSocketAddress(addr)
+	if err != nil {
+		log.WithError(err).Panic("parse address")
+	}
+	if err := sa.Listen(produceSock); err != nil {
 		log.WithError(err).Panic("listen")
 	}
-	if err := consumeSock.Dial(addr); err != nil {
+	if err := sa.Dial(consumeSock); err != nil {
 		log.WithError(err).Panic("dial")
 	}
 

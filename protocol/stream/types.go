@@ -29,6 +29,6 @@ type (
 
 // control messages
 var (
-	ControlMsgKeepAlive    = []byte(">")
-	ControlMsgKeepAliveAck = []byte("<")
+	ControlMsgKeepAlive    = []byte{0x00}
+	ControlMsgKeepAliveAck = []byte{0x01}
 )
