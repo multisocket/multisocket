@@ -177,7 +177,10 @@ func (t tcpTran) NewListener(address string) (transport.Listener, error) {
 		return nil, err
 	}
 
-	l := &listener{addr: addr}
+	l := &listener{
+		addr:    addr,
+		closedq: make(chan struct{}),
+	}
 
 	return l, nil
 }

@@ -135,7 +135,8 @@ func (t ipcTran) NewListener(address string) (transport.Listener, error) {
 	}
 
 	l := &listener{
-		addr: addr,
+		addr:    addr,
+		closedq: make(chan struct{}),
 	}
 
 	return l, nil

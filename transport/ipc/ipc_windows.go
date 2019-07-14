@@ -123,7 +123,10 @@ func (t ipcTran) NewListener(address string) (transport.Listener, error) {
 		return nil, err
 	}
 
-	l := &listener{ path:    address}
+	l := &listener{
+		  path:    address,
+		  closedq: make(chan struct{}),
+	}
 
 	return l, nil
 }
