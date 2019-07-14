@@ -26,6 +26,22 @@ func BenchmarkSingleLatency(b *testing.B) {
 	}
 }
 
+func BenchmarkRoundLatency(b *testing.B) {
+	for idx := range sizes {
+		size := sizes[idx]
+		b.Run(size.name, func(b *testing.B) {
+			sz := size.sz
+			for idx := range transports {
+				tp := transports[idx]
+				b.Run(tp.name, func(b *testing.B) {
+					addr := tp.addr
+					benchmarkRoundLatency(b, addr, sz)
+				})
+			}
+		})
+	}
+}
+
 func BenchmarkGroupLatency(b *testing.B) {
 	for idx := range sizes {
 		size := sizes[idx]
@@ -98,8 +114,8 @@ func benchmarkSingleLatency(b *testing.B, addr string, sz int) {
 				return
 			}
 			b.StopTimer()
-			done <- struct{}{}
 			msg.FreeAll()
+			done <- struct{}{}
 		}
 	}()
 
@@ -118,6 +134,58 @@ func benchmarkSingleLatency(b *testing.B, addr string, sz int) {
 			return
 		}
 		<-done
+	}
+
+	b.StopTimer()
+}
+
+// benchmark message's send/recv round latency
+func benchmarkRoundLatency(b *testing.B, addr string, sz int) {
+	var (
+		err     error
+		srvsock multisocket.Socket
+		clisock multisocket.Socket
+	)
+	if srvsock, clisock, err = prepareSocks(addr); err != nil {
+		b.Errorf("connect error: %s", err)
+	}
+	defer srvsock.Close()
+	defer clisock.Close()
+
+	var content = make([]byte, sz)
+	go func() {
+		var (
+			err error
+			msg *message.Message
+		)
+		for {
+			if msg, err = srvsock.RecvMsg(); err != nil {
+				return
+			}
+			if err = srvsock.SendTo(msg.Source, content); err != nil {
+				return
+			}
+			msg.FreeAll()
+		}
+	}()
+
+	time.Sleep(500 * time.Millisecond)
+
+	var (
+		msg *message.Message
+	)
+	b.SetBytes(1)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err = clisock.Send(content); err != nil {
+			b.Errorf("client send error: %s", err)
+			return
+		}
+		if msg, err = clisock.RecvMsg(); err != nil {
+			b.Errorf("client recv error: %s", err)
+			return
+		}
+		msg.FreeAll()
 	}
 
 	b.StopTimer()

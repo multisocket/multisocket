@@ -117,12 +117,14 @@ func testSocketMaxRecvContentLength(t *testing.T, addr string, sz int) {
 	defer srvsock.Close()
 	defer clisock.Close()
 
+	count := 10
+	done := make(chan struct{})
 	go func() {
 		var (
 			err error
 			msg *message.Message
 		)
-		for {
+		for i := 1; i <= count; i++ {
 			if msg, err = srvsock.RecvMsg(); err != nil {
 				if err != errs.ErrClosed {
 					t.Errorf("RecvMsg error: %s", err)
@@ -134,16 +136,18 @@ func testSocketMaxRecvContentLength(t *testing.T, addr string, sz int) {
 			}
 			msg.FreeAll()
 		}
+		done <- struct{}{}
 	}()
 
 	var (
 		content []byte
 	)
-	for i := 0; i < 20; i++ {
-		content = genRandomContent(maxRecvContentLength - 10 + i)
+	for i := 1; i <= count+10; i++ {
+		content = genRandomContent(maxRecvContentLength - count + i)
 		if err = clisock.Send(content); err != nil {
 			t.Errorf("Send error: %s", err)
 			break
 		}
 	}
+	<-done
 }
