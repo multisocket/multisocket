@@ -357,7 +357,7 @@ func (msg *Message) Dup() (dup *Message) {
 	dup = msgPool.Get().(*Message)
 	dup.Header = msg.Header
 
-	dup.buf = bytespool.Alloc(cap(msg.buf))
+	dup.buf = bytespool.Alloc(len(msg.buf))
 	copy(dup.buf, msg.buf)
 	sourceSize := 4 * int(dup.Header.Hops)
 	destSize := 4 * int(dup.Header.Distance)
