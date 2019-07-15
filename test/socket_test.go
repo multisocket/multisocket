@@ -215,7 +215,7 @@ func testSocketCloseSender(t *testing.T, addr string, sz int) {
 			}
 		}
 		clisock.Close()
-		time.AfterFunc(100*time.Millisecond, func() {
+		time.AfterFunc(500*time.Millisecond, func() {
 			srvsock.Close()
 		})
 	}()
