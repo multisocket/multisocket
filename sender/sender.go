@@ -8,9 +8,9 @@ import (
 	"github.com/multisocket/multisocket/errs"
 	"github.com/multisocket/multisocket/message"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/multisocket/multisocket/options"
 	"github.com/multisocket/multisocket/utils"
+	log "github.com/sirupsen/logrus"
 )
 
 type (
@@ -30,6 +30,8 @@ type (
 		connector.Pipe
 		stopq chan struct{}
 		sendq chan *message.Message
+		// TODO: use a better way to support inproc.channel like transport: free payload internal
+		freeAll bool
 	}
 )
 
@@ -92,9 +94,10 @@ func (s *sender) pushMsgToPipes(msg *message.Message, pipes []*pipe) {
 
 func (s *sender) newPipe(cp connector.Pipe) *pipe {
 	return &pipe{
-		Pipe:  cp,
-		stopq: make(chan struct{}),
-		sendq: make(chan *message.Message, s.sendQueueSize()),
+		Pipe:    cp,
+		stopq:   make(chan struct{}),
+		sendq:   make(chan *message.Message, s.sendQueueSize()),
+		freeAll: cp.Transport().Scheme() != "inproc.channel",
 	}
 }
 
@@ -155,7 +158,6 @@ func (s *sender) remPipe(id uint32) {
 
 func (s *sender) stopPipe(p *pipe) {
 	close(p.stopq)
-	freeAll := p.Transport().Scheme() != "inproc.channel"
 	tm := utils.NewTimerWithDuration(s.closeTimeout())
 	defer tm.Stop()
 DRAIN_MSG_LOOP:
@@ -167,7 +169,7 @@ DRAIN_MSG_LOOP:
 			break DRAIN_MSG_LOOP
 		case msg := <-p.sendq:
 			// send to dest/all msgs
-			if err := s.doSendMsg(p, msg, freeAll); err != nil {
+			if err := s.doSendMsg(p, msg); err != nil {
 				break DRAIN_MSG_LOOP
 			}
 		default:
@@ -213,8 +215,6 @@ func (s *sender) run(p *pipe) {
 		// raw pipe should not recv send to one messages.
 		sendq = nil
 	}
-	// TODO: use a better way to support inproc.channel like transport: free payload internal
-	freeAll := p.Transport().Scheme() != "inproc.channel"
 SENDING:
 	for {
 		select {
@@ -224,7 +224,7 @@ SENDING:
 			for {
 				select {
 				case msg = <-sendq:
-					if err = s.doSendMsg(p, msg, freeAll); err != nil {
+					if err = s.doSendMsg(p, msg); err != nil {
 						break SEND_REMAINING
 					}
 				case <-s.closetq:
@@ -241,7 +241,7 @@ SENDING:
 		case msg = <-p.sendq:
 		}
 
-		if err = s.doSendMsg(p, msg, freeAll); err != nil {
+		if err = s.doSendMsg(p, msg); err != nil {
 			break SENDING
 		}
 	}
@@ -256,7 +256,7 @@ SENDING:
 	s.wg.Done()
 }
 
-func (s *sender) doSendMsg(p *pipe, msg *message.Message, freeAll bool) (err error) {
+func (s *sender) doSendMsg(p *pipe, msg *message.Message) (err error) {
 	if err = p.SendMsg(msg); err != nil {
 		if log.IsLevelEnabled(log.DebugLevel) {
 			log.WithField("domain", "sender").
@@ -271,7 +271,7 @@ func (s *sender) doSendMsg(p *pipe, msg *message.Message, freeAll bool) (err err
 		msg.FreeAll()
 		return
 	}
-	if freeAll {
+	if p.freeAll {
 		// free all
 		msg.FreeAll()
 	} else {
