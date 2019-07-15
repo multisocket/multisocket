@@ -19,6 +19,9 @@ import (
 
 func TestSocketSendRecv(t *testing.T) {
 	for idx := range sizes {
+		if idx%2 != 0 {
+			continue
+		}
 		size := sizes[idx]
 		t.Run(size.name, func(t *testing.T) {
 			sz := size.sz
@@ -35,6 +38,10 @@ func TestSocketSendRecv(t *testing.T) {
 
 func TestSocketMaxRecvContentLength(t *testing.T) {
 	for idx := range sizes {
+		if idx%3 != 0 {
+			continue
+		}
+
 		size := sizes[idx]
 		if size.sz < 10 {
 			continue
@@ -54,10 +61,11 @@ func TestSocketMaxRecvContentLength(t *testing.T) {
 
 func TestSocketCloseSender(t *testing.T) {
 	for idx := range sizes {
-		size := sizes[idx]
-		if size.sz < 10 {
+		if idx%3 != 0 {
 			continue
 		}
+
+		size := sizes[idx]
 		t.Run(size.name, func(t *testing.T) {
 			sz := size.sz
 			for idx := range transports {
