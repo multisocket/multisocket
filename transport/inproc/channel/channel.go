@@ -34,7 +34,8 @@ func init() {
 }
 
 func newPipe(opts options.Options) (net.Conn, net.Conn) {
-	a, b := make(chan []byte), make(chan []byte)
+	bufferSize := opts.GetOptionDefault(Options.BufferSize).(int)
+	a, b := make(chan []byte, bufferSize), make(chan []byte, bufferSize)
 	lk := &sync.Mutex{}
 	closedq := make(chan struct{})
 	return &pipe{
