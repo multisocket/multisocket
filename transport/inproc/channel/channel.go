@@ -72,8 +72,13 @@ READING:
 		if p.s == nil {
 			select {
 			case <-p.closedq:
-				err = errs.ErrClosed
-				return
+				// read remaining
+				select {
+				case p.s = <-p.rc:
+				default:
+					err = errs.ErrClosed
+					return
+				}
 			case p.s = <-p.rc:
 			}
 			p.i = 0
