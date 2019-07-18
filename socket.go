@@ -5,72 +5,212 @@ import (
 
 	"github.com/multisocket/multisocket/connector"
 	"github.com/multisocket/multisocket/errs"
+	"github.com/multisocket/multisocket/message"
 	"github.com/multisocket/multisocket/options"
-	"github.com/multisocket/multisocket/receiver"
-	"github.com/multisocket/multisocket/sender"
+	log "github.com/sirupsen/logrus"
 )
 
-type socket struct {
-	connector.Connector
-	sender.Sender
-	receiver.Receiver
+type (
+	socket struct {
+		options.Options
+		connector connector.Connector
+		ConnectorAction
 
-	sync.Mutex
-	closed bool
-}
+		sync.RWMutex
+		closedq chan struct{}
 
-// NewDefault creates a default setting Socket
-func NewDefault() (sock Socket) {
-	return New(connector.New(), sender.New(), receiver.New())
-}
+		pipes map[uint32]*pipe
+
+		// recv
+		noRecv bool
+		recvq  chan *message.Message
+		// send
+		*sender
+	}
+
+	pipe struct {
+		connector.Pipe
+		*pipeSender
+	}
+)
+
+var (
+	emptyByteSlice = make([]byte, 0)
+)
 
 // New creates a Socket
-func New(connector connector.Connector, tx sender.Sender, rx receiver.Receiver) (sock Socket) {
-	if rx == nil {
-		// use receiver to check pipe closed
-		rx = receiver.NewWithOptions(options.OptionValues{receiver.Options.NoRecv: true})
+func New(ovs options.OptionValues) Socket {
+	s := &socket{
+		Options: options.NewOptionsWithValues(ovs),
+		closedq: make(chan struct{}),
+		pipes:   make(map[uint32]*pipe),
 	}
+	s.connector = connector.NewWithOptions(s.Options)
+	s.ConnectorAction = s.connector
+	s.onOptionChange(Options.NoRecv, nil, nil)
+	s.onOptionChange(Options.RecvQueueSize, nil, nil)
+	s.onOptionChange(Options.NoSend, nil, nil)
 
-	sock = &socket{
-		Connector: connector,
-		Sender:    tx,
-		Receiver:  rx,
+	s.Options.AddOptionChangeHook(s.onOptionChange)
+
+	// set pipe event handler
+	s.connector.SetPipeEventHandler(s.HandlePipeEvent)
+
+	return s
+}
+
+// options
+
+func (s *socket) onOptionChange(opt options.Option, oldVal, newVal interface{}) error {
+	switch opt {
+	case Options.NoRecv:
+		s.noRecv = s.GetOptionDefault(Options.NoRecv).(bool)
+	case Options.RecvQueueSize:
+		s.recvq = make(chan *message.Message, s.recvQueueSize())
+	case Options.NoSend:
+		if s.GetOptionDefault(Options.NoSend).(bool) {
+			s.sender = nil
+		} else {
+			s.sender = newSender(s)
+		}
+	default:
+		if s.sender != nil {
+			return s.sender.onOptionChange(opt, oldVal, newVal)
+		}
 	}
+	return nil
+}
 
-	if tx != nil {
-		tx.AttachConnector(connector)
+func (s *socket) recvQueueSize() uint16 {
+	return s.GetOptionDefault(Options.RecvQueueSize).(uint16)
+}
+
+func (s *socket) HandlePipeEvent(e connector.PipeEvent, pipe connector.Pipe) {
+	switch e {
+	case connector.PipeEventAdd:
+		s.addPipe(pipe)
+	case connector.PipeEventRemove:
+		s.remPipe(pipe.ID())
 	}
-	rx.AttachConnector(connector)
+}
 
+func (s *socket) addPipe(cp connector.Pipe) {
+	s.Lock()
+	p := &pipe{Pipe: cp}
+	s.pipes[p.ID()] = p
+	go s.receiver(p)
+	if s.sender != nil {
+		s.sender.initPipe(p)
+		go s.sender.run(p)
+	}
+	s.Unlock()
+}
+
+func (s *socket) remPipe(id uint32) {
+	s.Lock()
+	p, ok := s.pipes[id]
+	if !ok {
+		s.Unlock()
+		return
+	}
+	delete(s.pipes, id)
+	s.Unlock()
+
+	if s.sender != nil {
+		s.sender.stopPipe(p)
+	}
+}
+
+func (s *socket) getPipeByID(id uint32) *pipe {
+	s.socket.RLock()
+	p := s.socket.pipes[id]
+	s.socket.RUnlock()
+	return p
+}
+
+// recv
+
+func (s *socket) RecvMsg() (msg *message.Message, err error) {
+	select {
+	case <-s.closedq:
+		// exhaust received messages
+		select {
+		case msg = <-s.recvq:
+		default:
+			err = errs.ErrClosed
+		}
+	case msg = <-s.recvq:
+	}
 	return
 }
 
-func (s *socket) GetConnector() connector.Connector {
-	return s.Connector
-}
+func (s *socket) receiver(p *pipe) {
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "receiver").
+			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
+			Debug("receiver start run")
+	}
 
-func (s *socket) GetSender() sender.Sender {
-	return s.Sender
-}
+	var (
+		err error
+		msg *message.Message
+	)
 
-func (s *socket) GetReceiver() receiver.Receiver {
-	return s.Receiver
+	if p.IsRaw() {
+		// NOTE:
+		// send a empty message to make a connection
+		s.recvq <- message.NewRawRecvMessage(p.ID(), emptyByteSlice)
+	}
+RECVING:
+	for {
+		if msg, err = p.RecvMsg(); msg != nil {
+			if s.noRecv {
+				// just drop
+				msg.FreeAll()
+			} else if msg.Header.HasFlags(message.MsgFlagInternal) {
+				// FIXME: handle internal messages.
+				msg.FreeAll()
+			} else {
+				select {
+				case <-s.closedq:
+					msg.FreeAll()
+					s.remPipe(p.ID())
+					break RECVING
+				case s.recvq <- msg:
+				}
+			}
+		}
+		if err != nil {
+			break RECVING
+		}
+	}
+
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "receiver").
+			WithError(err).
+			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
+			Debug("receiver stopped run")
+	}
 }
 
 func (s *socket) Close() error {
 	s.Lock()
-	if s.closed {
+	select {
+	case <-s.closedq:
 		s.Unlock()
 		return errs.ErrClosed
+	default:
+		close(s.closedq)
 	}
-	s.closed = true
 	s.Unlock()
 
-	s.Receiver.Close()
-	if s.Sender != nil {
-		s.Sender.Close()
+	// clear pipe even handler
+	s.connector.ClearPipeEventHandler(s.HandlePipeEvent)
+
+	if s.sender != nil {
+		s.sender.close()
 	}
-	s.Connector.Close()
+	s.connector.Close()
 
 	return nil
 }

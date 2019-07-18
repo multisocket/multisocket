@@ -15,39 +15,45 @@ type (
 		options.Options
 
 		sync.Mutex
-		negotiator        Negotiator
-		limit             int
-		dialers           map[*dialer]struct{} // can dial to any address any times
-		listeners         map[*listener]struct{}
-		pipes             map[uint32]*pipe
-		pipeEventHandlers map[PipeEventHandler]struct{}
-		closed            bool
+		negotiator       Negotiator
+		limit            int
+		dialers          map[*dialer]struct{} // can dial to any address any times
+		listeners        map[*listener]struct{}
+		pipes            map[uint32]*pipe
+		pipeEventHandler PipeEventHandlerFunc
+		closed           bool
 	}
 )
 
-// New create a any Connector
-func New() Connector {
-	return NewWithOptions(nil)
+// NewWithOptionValues create a Connector with option values
+func NewWithOptionValues(ovs options.OptionValues) Connector {
+	return NewWithLimitAndOptionValues(-1, ovs)
+}
+
+// NewWithLimitAndOptionValues create a Connector with limit and option values
+func NewWithLimitAndOptionValues(limit int, ovs options.OptionValues) Connector {
+	return NewWithLimitAndOptions(limit, options.NewOptionsWithValues(ovs))
 }
 
 // NewWithOptions create a Connector with options
-func NewWithOptions(ovs options.OptionValues) Connector {
-	return NewWithLimitAndOptions(-1, ovs)
+func NewWithOptions(opts options.Options) Connector {
+	return NewWithLimitAndOptions(-1, opts)
 }
 
 // NewWithLimitAndOptions create a Connector with limit and options
-func NewWithLimitAndOptions(limit int, ovs options.OptionValues) Connector {
+func NewWithLimitAndOptions(limit int, opts options.Options) Connector {
 	c := &connector{
-		limit:             limit,
-		dialers:           make(map[*dialer]struct{}),
-		listeners:         make(map[*listener]struct{}),
-		pipes:             make(map[uint32]*pipe),
-		pipeEventHandlers: make(map[PipeEventHandler]struct{}),
+		Options:   opts,
+		limit:     limit,
+		dialers:   make(map[*dialer]struct{}),
+		listeners: make(map[*listener]struct{}),
+		pipes:     make(map[uint32]*pipe),
 	}
-	c.Options = options.NewOptions().SetOptionChangeHook(c.onOptionChange)
-	for opt, val := range ovs {
-		c.SetOption(opt, val)
+	c.Options.AddOptionChangeHook(c.onOptionChange)
+	for o, v := range c.Options.OptionValues() {
+		c.onOptionChange(o, nil, v)
 	}
+
 	if log.IsLevelEnabled(log.DebugLevel) {
 		log.WithField("domain", "connector").
 			WithField("limit", c.limit).
@@ -56,7 +62,7 @@ func NewWithLimitAndOptions(limit int, ovs options.OptionValues) Connector {
 	return c
 }
 
-func (c *connector) onOptionChange(opt options.Option, oldVal, newVal interface{}) {
+func (c *connector) onOptionChange(opt options.Option, oldVal, newVal interface{}) error {
 	switch opt {
 	case Options.PipeLimit:
 		c.Lock()
@@ -71,6 +77,7 @@ func (c *connector) onOptionChange(opt options.Option, oldVal, newVal interface{
 		c.checkLimit(true)
 		c.Unlock()
 	}
+	return nil
 }
 
 // used by other functions, must get lock first
@@ -150,8 +157,8 @@ func (c *connector) addPipe(p *pipe) {
 
 	if c.limit == -1 || c.limit > len(c.pipes) {
 		c.pipes[p.ID()] = p
-		for peh := range c.pipeEventHandlers {
-			peh.HandlePipeEvent(PipeEventAdd, p)
+		if c.pipeEventHandler != nil {
+			c.pipeEventHandler(PipeEventAdd, p)
 		}
 
 		if log.IsLevelEnabled(log.DebugLevel) {
@@ -177,8 +184,8 @@ func (c *connector) addPipe(p *pipe) {
 func (c *connector) remPipe(p *pipe) {
 	c.Lock()
 	delete(c.pipes, p.ID())
-	for peh := range c.pipeEventHandlers {
-		peh.HandlePipeEvent(PipeEventRemove, p)
+	if c.pipeEventHandler != nil {
+		c.pipeEventHandler(PipeEventRemove, p)
 	}
 	c.Unlock()
 
@@ -375,14 +382,14 @@ func (c *connector) Close() {
 	}
 }
 
-func (c *connector) RegisterPipeEventHandler(handler PipeEventHandler) {
+func (c *connector) SetPipeEventHandler(handler PipeEventHandlerFunc) {
 	c.Lock()
-	c.pipeEventHandlers[handler] = struct{}{}
+	c.pipeEventHandler = handler
 	c.Unlock()
 }
 
-func (c *connector) UnregisterPipeEventHandler(handler PipeEventHandler) {
+func (c *connector) ClearPipeEventHandler(handler PipeEventHandlerFunc) {
 	c.Lock()
-	delete(c.pipeEventHandlers, handler)
+	c.pipeEventHandler = nil
 	c.Unlock()
 }

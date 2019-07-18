@@ -31,7 +31,7 @@ import (
 // ThroughputServer is the server side -- very much equivalent to local_thr in
 // nanomsg/perf.  It does the measurement by counting packets received.
 func ThroughputServer(addr string, msgSize int, count int) {
-	s := multisocket.NewDefault()
+	s := multisocket.New(nil)
 	defer s.Close()
 
 	l, err := s.NewListener(addr, nil)
@@ -83,7 +83,7 @@ func ThroughputServer(addr string, msgSize int, count int) {
 // the requested number of packets of given size to the server.  It corresponds
 // to remote_thr.
 func ThroughputClient(addr string, msgSize int, count int) {
-	s := multisocket.NewDefault()
+	s := multisocket.New(nil)
 	defer s.Close()
 
 	d, err := s.NewDialer(addr, nil)

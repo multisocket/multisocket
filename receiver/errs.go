@@ -1,4 +1,0 @@
-package receiver
-
-// errors
-const ()

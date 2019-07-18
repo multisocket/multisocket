@@ -32,7 +32,7 @@ import (
 // LatencyServer is the server side -- very much equivalent to local_lat in
 // nanomsg/perf.  It does no measurement at all, just sends packets on the wire.
 func LatencyServer(addr string, msgSize int, roundTrips int) {
-	s := multisocket.NewDefault()
+	s := multisocket.New(nil)
 	defer func() { time.Sleep(10 * time.Microsecond); s.Close() }()
 
 	l, err := s.NewListener(addr, nil)
@@ -65,7 +65,7 @@ func LatencyServer(addr string, msgSize int, roundTrips int) {
 // LatencyClient is the client side of the latency test.  It measures round
 // trip times, and is the equivalent to nanomsg/perf/remote_lat.
 func LatencyClient(addr string, msgSize int, roundTrips int) {
-	s := multisocket.NewDefault()
+	s := multisocket.New(nil)
 	defer s.Close()
 
 	d, err := s.NewDialer(addr, nil)

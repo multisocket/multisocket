@@ -61,8 +61,8 @@ func prepareSocks(addr string, ovses ...options.OptionValues) (srvsock, clisock 
 		return
 	}
 
-	srvsock = multisocket.NewDefault()
-	clisock = multisocket.NewDefault()
+	srvsock = multisocket.New(nil)
+	clisock = multisocket.New(nil)
 	if err = sa.Listen(srvsock, ovses...); err != nil {
 		return
 	}

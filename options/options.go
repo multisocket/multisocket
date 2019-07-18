@@ -13,7 +13,7 @@ import (
 
 type (
 	// OptionChangeHook is called when set an option value.
-	OptionChangeHook func(opt Option, oldVal, newVal interface{})
+	OptionChangeHook func(opt Option, oldVal, newVal interface{}) error
 	// Options is option set.
 	Options interface {
 		SetOption(opt Option, val interface{}) (err error)
@@ -21,7 +21,7 @@ type (
 		GetOption(opt Option) (val interface{}, ok bool)
 		GetOptionDefault(opt Option) interface{}
 		OptionValues() OptionValues
-		SetOptionChangeHook(hook OptionChangeHook) Options
+		AddOptionChangeHook(hook OptionChangeHook) Options
 	}
 
 	// Option is an option item.
@@ -37,10 +37,10 @@ type (
 
 	options struct {
 		sync.RWMutex
-		opts             map[Option]interface{}
-		accepts          map[Option]bool
-		downstream       Options
-		optionChangeHook OptionChangeHook
+		opts              map[Option]interface{}
+		accepts           map[Option]bool
+		downstream        Options
+		optionChangeHooks []OptionChangeHook
 	}
 
 	// BaseOption is the base of specific options
@@ -262,9 +262,9 @@ func (opts *options) acceptOption(opt Option) bool {
 	return opts.accepts == nil || opts.accepts[opt]
 }
 
-func (opts *options) SetOptionChangeHook(hook OptionChangeHook) Options {
+func (opts *options) AddOptionChangeHook(hook OptionChangeHook) Options {
 	opts.Lock()
-	opts.optionChangeHook = hook
+	opts.optionChangeHooks = append(opts.optionChangeHooks, hook)
 	opts.Unlock()
 	return opts
 }
@@ -287,19 +287,24 @@ func (opts *options) SetOption(opt Option, val interface{}) (err error) {
 	opts.Lock()
 	defer opts.Unlock()
 
-	opts.doSetOption(opt, val)
-	return
+	return opts.doSetOption(opt, val)
 }
 
 // doSetOption used by other setting functions.
-func (opts *options) doSetOption(opt Option, val interface{}) {
+func (opts *options) doSetOption(opt Option, val interface{}) (err error) {
 	oldVal := opts.opts[opt]
 	opts.opts[opt] = val
-	if opts.optionChangeHook != nil {
-		opts.Unlock()
-		opts.optionChangeHook(opt, oldVal, val)
-		opts.Lock()
+	if len(opts.optionChangeHooks) > 0 {
+		for _, hook := range opts.optionChangeHooks {
+			opts.Unlock()
+			if err = hook(opt, oldVal, val); err != nil {
+				opts.Lock()
+				return
+			}
+			opts.Lock()
+		}
 	}
+	return
 }
 
 func (opts *options) SetOptionIfNotExists(opt Option, val interface{}) (err error) {
@@ -320,7 +325,9 @@ func (opts *options) SetOptionIfNotExists(opt Option, val interface{}) (err erro
 	defer opts.Unlock()
 
 	if _, ok := opts.opts[opt]; !ok {
-		opts.doSetOption(opt, val)
+		if err = opts.doSetOption(opt, val); err != nil {
+			return
+		}
 	}
 	return
 }

@@ -24,10 +24,8 @@ type (
 	// PipeEvent is pipe event
 	PipeEvent int
 
-	// PipeEventHandler can handle pipe event
-	PipeEventHandler interface {
-		HandlePipeEvent(PipeEvent, Pipe)
-	}
+	// PipeEventHandlerFunc can handle pipe event
+	PipeEventHandlerFunc func(PipeEvent, Pipe)
 )
 
 // pipe events
@@ -90,7 +88,7 @@ type (
 		options.Options
 		Action
 		Close()
-		RegisterPipeEventHandler(PipeEventHandler)
-		UnregisterPipeEventHandler(PipeEventHandler)
+		SetPipeEventHandler(PipeEventHandlerFunc)
+		ClearPipeEventHandler(PipeEventHandlerFunc)
 	}
 )

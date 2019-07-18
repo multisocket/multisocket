@@ -31,7 +31,7 @@ import (
 
 // ReqRepLatencyServer is the server side for REQ/REP latency testing.
 func ReqRepLatencyServer(addr string, msgSize int, roundTrips int) {
-	s := multisocket.NewDefault()
+	s := multisocket.New(nil)
 	defer func() { time.Sleep(10 * time.Microsecond); s.Close() }()
 
 	l, err := s.NewListener(addr, nil)
@@ -64,7 +64,7 @@ func ReqRepLatencyServer(addr string, msgSize int, roundTrips int) {
 // ReqRepLatencyClient is the client side of the latency test.  It measures
 // round trip times using REQ/REP protocol.
 func ReqRepLatencyClient(addr string, msgSize int, roundTrips int) {
-	s := multisocket.NewDefault()
+	s := multisocket.New(nil)
 	defer s.Close()
 
 	d, err := s.NewDialer(addr, nil)

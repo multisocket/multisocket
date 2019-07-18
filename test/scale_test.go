@@ -32,6 +32,7 @@ func TestScalabilityTCPSendAll(t *testing.T) {
 
 func TestScalabilityInprocSendReply(t *testing.T) {
 	testScalabilitySendReply(t, "inproc://atscale_send_reply", 10, 20000)
+	// testScalabilitySendReply(t, "inproc://atscale_send_reply", 2, 1000)
 }
 
 func TestScalabilityInprocSendAll(t *testing.T) {
@@ -46,7 +47,7 @@ func testScalabilitySendReply(t *testing.T, addr string, loops int, threads int)
 	initialErr := errors.New("initial")
 	errs := make([]error, threads)
 
-	ssock := multisocket.NewDefault()
+	ssock := multisocket.New(nil)
 	if e := ssock.Listen(addr); e != nil {
 		t.Fatalf("Cannot listen: %v", e)
 	}
@@ -78,7 +79,7 @@ func testScalabilitySendAll(t *testing.T, addr string, loops int, threads int) {
 	initialErr := errors.New("initial")
 	errs := make([]error, threads)
 
-	ssock := multisocket.NewDefault()
+	ssock := multisocket.New(nil)
 	if e := ssock.Listen(addr); e != nil {
 		t.Fatalf("Cannot listen: %v", e)
 	}
@@ -127,7 +128,7 @@ func testScalabilitySendAll(t *testing.T, addr string, loops int, threads int) {
 
 func scalabilitySendAllClient(t *testing.T, idx int, addr string, errp *error, loops int, wg *sync.WaitGroup) {
 	defer wg.Done()
-	sock := multisocket.NewDefault()
+	sock := multisocket.New(nil)
 	defer sock.Close()
 	if err := sock.Dial(addr); err != nil {
 		*errp = err
@@ -167,7 +168,7 @@ func scalabilitySendAllClient(t *testing.T, idx int, addr string, errp *error, l
 
 func scalabilitySendReplyClient(t *testing.T, idx int, addr string, errp *error, loops int, wg, connWg *sync.WaitGroup) {
 	defer wg.Done()
-	sock := multisocket.NewDefault()
+	sock := multisocket.New(nil)
 	defer sock.Close()
 	if err := sock.Dial(addr); err != nil {
 		*errp = err
@@ -211,14 +212,15 @@ func scalabilitySendReplyClient(t *testing.T, idx int, addr string, errp *error,
 func scalabilitySendReplyServer(t *testing.T, sock multisocket.Socket) {
 	defer sock.Close()
 	var (
-		err error
-		msg *message.Message
+		err         error
+		msg         *message.Message
+		repyContent = []byte("pong")
 	)
 	for {
 		if msg, err = sock.RecvMsg(); err != nil {
 			return
 		}
-		if err = sock.SendTo(msg.Source, []byte("pong")); err != nil {
+		if err = sock.SendTo(msg.Source, repyContent); err != nil {
 			return
 		}
 		msg.FreeAll()

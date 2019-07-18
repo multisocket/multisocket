@@ -13,7 +13,6 @@ import (
 	"github.com/multisocket/multisocket/errs"
 	"github.com/multisocket/multisocket/message"
 	"github.com/multisocket/multisocket/options"
-	"github.com/multisocket/multisocket/sender"
 	_ "github.com/multisocket/multisocket/transport/all"
 )
 
@@ -105,32 +104,29 @@ func testSocketSendRecv(t *testing.T, addr string, sz int) {
 			}
 			if err = srvsock.SendTo(msg.Source, msg.Content); err != nil {
 				t.Errorf("SendTo error: %s", err)
-				break
 			}
 			msg.FreeAll()
 		}
 	}()
 
 	var (
-		randSeed     = initRandSeed(0)
-		content      []byte
-		replyContent []byte
+		randSeed = initRandSeed(0)
+		content  []byte
+		msg      *message.Message
 	)
 	szMin := sz / 2
 	for i := 0; i < 2000; i++ {
 		content = genRandomContent(szMin + rand.Intn(szMin+1))
 		if err = clisock.Send(content); err != nil {
 			t.Errorf("Send error: %s", err)
-			break
 		}
-		if replyContent, err = clisock.Recv(); err != nil {
+		if msg, err = clisock.RecvMsg(); err != nil {
 			t.Errorf("Recv error: %s", err)
-			break
 		}
-		if !bytes.Equal(content, replyContent) {
-			t.Errorf("send/recv not equal: randSeed=%d, i=%d, len=%d/%d", randSeed, i, len(content), len(replyContent))
-			break
+		if !bytes.Equal(content, msg.Content) {
+			t.Errorf("send/recv not equal: randSeed=%d, i=%d, len=%d/%d", randSeed, i, len(content), len(msg.Content))
 		}
+		msg.FreeAll()
 	}
 }
 
@@ -176,7 +172,6 @@ func testSocketMaxRecvContentLength(t *testing.T, addr string, sz int) {
 		content = genRandomContent(maxRecvContentLength - count + i)
 		if err = clisock.Send(content); err != nil {
 			t.Errorf("Send error: %s", err)
-			break
 		}
 	}
 	<-done
@@ -194,9 +189,8 @@ func testSocketCloseSender(t *testing.T, addr string, sz int) {
 		t.Errorf("parse address error: %s", err)
 	}
 
-	srvsock = multisocket.NewDefault()
-	clisock = multisocket.NewDefault()
-	clisock.GetSender().SetOption(sender.Options.SendQueueSize, 6400)
+	srvsock = multisocket.New(nil)
+	clisock = multisocket.New(options.OptionValues{multisocket.Options.SendQueueSize: 6400})
 	if err = sa.Listen(srvsock); err != nil {
 		t.Errorf("server listen error: %s", err)
 	}
@@ -211,7 +205,6 @@ func testSocketCloseSender(t *testing.T, addr string, sz int) {
 			content := genRandomContent(szMin + rand.Intn(szMin+1))
 			if err = clisock.Send(content); err != nil {
 				t.Errorf("Send error: %s", err)
-				break
 			}
 		}
 		clisock.Close()

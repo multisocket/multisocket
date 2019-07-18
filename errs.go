@@ -1,4 +1,4 @@
-package sender
+package multisocket
 
 import (
 	"github.com/multisocket/multisocket/errs"

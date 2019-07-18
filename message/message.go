@@ -394,17 +394,3 @@ func (msg *Message) Free() {
 func (msg *Message) PipeID() uint32 {
 	return msg.Source.CurID()
 }
-
-// ToContent extract the message content then free message.
-func (msg *Message) ToContent() (content []byte) {
-	content = bytespool.Alloc(len(msg.Content))
-	copy(content, msg.Content)
-	msg.FreeAll()
-
-	return
-}
-
-// FreeContent free message's content
-func FreeContent(c []byte) {
-	bytespool.Free(c)
-}
