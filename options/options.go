@@ -14,13 +14,17 @@ import (
 type (
 	// OptionChangeHook is called when set an option value.
 	OptionChangeHook func(opt Option, oldVal, newVal interface{}) error
+	// ReadOnlyOptions is options set read only.
+	ReadOnlyOptions interface {
+		GetOption(opt Option) (val interface{}, ok bool)
+		GetOptionDefault(opt Option) interface{}
+		OptionValues() OptionValues
+	}
 	// Options is option set.
 	Options interface {
 		SetOption(opt Option, val interface{}) (err error)
 		SetOptionIfNotExists(opt Option, val interface{}) (err error)
-		GetOption(opt Option) (val interface{}, ok bool)
-		GetOptionDefault(opt Option) interface{}
-		OptionValues() OptionValues
+		ReadOnlyOptions
 		AddOptionChangeHook(hook OptionChangeHook) Options
 	}
 
@@ -39,6 +43,7 @@ type (
 		sync.RWMutex
 		opts              map[Option]interface{}
 		accepts           map[Option]bool
+		subOptions        []Options
 		downstream        Options
 		optionChangeHooks []OptionChangeHook
 	}
@@ -240,17 +245,30 @@ func NewOptionsWithValues(ovs OptionValues) Options {
 
 // NewOptionsWithDownStreamsAndAccepts create an option set with down stream and accepts.
 func NewOptionsWithDownStreamsAndAccepts(downstream Options, accepts ...Option) Options {
-	options := &options{
+	opts := &options{
 		opts:       make(map[Option]interface{}),
 		downstream: downstream,
 		accepts:    make(map[Option]bool),
 	}
 
 	for _, opt := range accepts {
-		options.accepts[opt] = true
+		opts.accepts[opt] = true
 	}
 
-	return options
+	return opts
+}
+
+// NewOptionsWithValuesAndSubs create an option set with values and sub options
+func NewOptionsWithValuesAndSubs(ovs OptionValues, subs ...Options) Options {
+	opts := &options{
+		opts:       make(map[Option]interface{}),
+		subOptions: subs,
+	}
+	for opt, val := range ovs {
+		opts.SetOption(opt, val)
+	}
+
+	return opts
 }
 
 // NewOptionsWithAccepts create an option set with accepts.
@@ -338,6 +356,13 @@ func (opts *options) GetOption(opt Option) (val interface{}, ok bool) {
 		opts.RLock()
 		val, ok = opts.opts[opt]
 		opts.RUnlock()
+		if !ok {
+			for _, sub := range opts.subOptions {
+				if val, ok = sub.GetOption(opt); ok {
+					return
+				}
+			}
+		}
 		return
 	} else if opts.downstream != nil {
 		// pass to downstream
