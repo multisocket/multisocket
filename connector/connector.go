@@ -248,7 +248,7 @@ func (c *connector) NewDialer(addr string, ovs options.OptionValues) (d Dialer, 
 		return
 	}
 
-	xd := newDialer(c, addr, td, ovs)
+	xd := newDialer(c, addr, td, options.NewOptionsWithValuesAndSubs(ovs, c.Options))
 	if c.limit != -1 && c.limit <= len(c.pipes) {
 		// exceed limit
 		xd.stop()
@@ -313,7 +313,7 @@ func (c *connector) NewListener(addr string, ovs options.OptionValues) (l Listen
 		return
 	}
 
-	xl := newListener(c, addr, tl, ovs)
+	xl := newListener(c, addr, tl, options.NewOptionsWithValuesAndSubs(ovs, c.Options))
 	if c.limit != -1 && c.limit <= len(c.pipes) {
 		// exceed limit
 		xl.stop()

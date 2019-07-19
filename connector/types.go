@@ -9,7 +9,7 @@ import (
 type (
 	// Pipe is a connection between two peers.
 	Pipe interface {
-		options.Options
+		options.ReadOnlyOptions
 
 		ID() uint32
 		IsRaw() bool

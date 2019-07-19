@@ -43,24 +43,19 @@ var (
 )
 
 func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener, opts options.Options) *pipe {
-	pipeOpts := options.NewOptionsWithValues(options.OptionValues{
-		Options.Pipe.CloseOnEOF:           Options.Pipe.CloseOnEOF.ValueFrom(opts, parent.Options),
-		Options.Pipe.Raw:                  Options.Pipe.Raw.ValueFrom(opts, parent.Options),
-		Options.Pipe.RawRecvBufSize:       Options.Pipe.RawRecvBufSize.ValueFrom(opts, parent.Options),
-		Options.Pipe.MaxRecvContentLength: Options.Pipe.MaxRecvContentLength.ValueFrom(opts, parent.Options),
-	})
 	p := &pipe{
-		Options:              pipeOpts,
+		Options:              opts,
 		Connection:           tc,
-		closeOnEOF:           Options.Pipe.CloseOnEOF.ValueFrom(pipeOpts),
-		raw:                  Options.Pipe.Raw.ValueFrom(pipeOpts),
-		maxRecvContentLength: Options.Pipe.MaxRecvContentLength.ValueFrom(pipeOpts),
+		closeOnEOF:           Options.Pipe.CloseOnEOF.ValueFrom(opts),
+		raw:                  Options.Pipe.Raw.ValueFrom(opts),
+		maxRecvContentLength: Options.Pipe.MaxRecvContentLength.ValueFrom(opts),
 
 		id:     pipeID.NextID(),
 		parent: parent,
 		d:      d,
 		l:      l,
 
+		// alloc
 		headerBuf: make([]byte, message.HeaderSize),
 	}
 	p.sendMsgFunc = p.sendMsg
@@ -69,7 +64,7 @@ func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener,
 		p.sendMsgFunc = p.sendRawMsg
 		p.recvMsgFunc = p.recvRawMsg
 		// alloc
-		p.rawRecvBuf = make([]byte, p.GetOptionDefault(Options.Pipe.RawRecvBufSize).(int))
+		p.rawRecvBuf = make([]byte, Options.Pipe.RawRecvBufSize.ValueFrom(opts))
 	}
 
 	return p

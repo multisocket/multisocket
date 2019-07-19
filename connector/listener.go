@@ -4,10 +4,10 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/multisocket/multisocket/errs"
 	"github.com/multisocket/multisocket/options"
 	"github.com/multisocket/multisocket/transport"
+	log "github.com/sirupsen/logrus"
 )
 
 type listener struct {
@@ -22,9 +22,9 @@ type listener struct {
 	stopped bool
 }
 
-func newListener(parent *connector, addr string, tl transport.Listener, ovs options.OptionValues) *listener {
+func newListener(parent *connector, addr string, tl transport.Listener, opts options.Options) *listener {
 	return &listener{
-		Options:  options.NewOptionsWithValues(ovs),
+		Options:  opts,
 		parent:   parent,
 		addr:     addr,
 		Listener: tl,

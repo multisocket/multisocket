@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/multisocket/multisocket/errs"
 	"github.com/multisocket/multisocket/options"
 	"github.com/multisocket/multisocket/transport"
+	log "github.com/sirupsen/logrus"
 )
 
 type dialer struct {
@@ -27,9 +27,9 @@ type dialer struct {
 	reconnTime time.Duration
 }
 
-func newDialer(parent *connector, addr string, td transport.Dialer, ovs options.OptionValues) *dialer {
+func newDialer(parent *connector, addr string, td transport.Dialer, opts options.Options) *dialer {
 	return &dialer{
-		Options: options.NewOptionsWithValues(ovs),
+		Options: opts,
 		parent:  parent,
 		addr:    addr,
 		Dialer:  td,
