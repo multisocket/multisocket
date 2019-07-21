@@ -19,8 +19,8 @@ type (
 		Raw            options.BoolOption
 		RawRecvBufSize options.IntOption
 		// close pipe when peer shutdown write(half-close, cause EOF)
-		CloseOnEOF           options.BoolOption
-		MaxRecvContentLength options.Uint32Option
+		CloseOnEOF        options.BoolOption
+		MaxRecvBodyLength options.Uint32Option
 	}
 
 	connectorOptions struct {
@@ -43,10 +43,10 @@ var (
 			DialAsync:        options.NewBoolOption(false),
 		},
 		Pipe: pipeOptions{
-			Raw:                  options.NewBoolOption(false),
-			RawRecvBufSize:       options.NewIntOption(4 * 1024),
-			CloseOnEOF:           options.NewBoolOption(true),
-			MaxRecvContentLength: options.NewUint32Option(128 * 1024), // 0 for no limit
+			Raw:               options.NewBoolOption(false),
+			RawRecvBufSize:    options.NewIntOption(4 * 1024),
+			CloseOnEOF:        options.NewBoolOption(true),
+			MaxRecvBodyLength: options.NewUint32Option(128 * 1024), // 0 for no limit
 		},
 	}
 )

@@ -17,10 +17,10 @@ type (
 		ConnectorAction
 
 		RecvMsg() (*message.Message, error)
-		SendMsg(msg *message.Message) error                // for forward message
-		Send(content []byte) error                         // for initiative send one
-		SendAll(content []byte) error                      // for initiative send all
-		SendTo(dest message.MsgPath, content []byte) error // for reply send
+		SendMsg(msg *message.Message) error             // for forward message
+		Send(body []byte) error                         // for initiative send one
+		SendAll(body []byte) error                      // for initiative send all
+		SendTo(dest message.MsgPath, body []byte) error // for reply send
 
 		Close() error
 	}

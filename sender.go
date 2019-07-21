@@ -232,16 +232,16 @@ func (s *sender) sendToAll(msg *message.Message) (err error) {
 	return nil
 }
 
-func (s *sender) Send(content []byte) (err error) {
-	return s.doPushMsg(message.NewSendMessage(message.SendTypeToOne, nil, nil, 0, s.ttl, content), s.sendq)
+func (s *sender) Send(body []byte) (err error) {
+	return s.doPushMsg(message.NewSendMessage(message.SendTypeToOne, nil, nil, 0, s.ttl, body), s.sendq)
 }
 
-func (s *sender) SendTo(dest message.MsgPath, content []byte) (err error) {
-	return s.sendTo(message.NewSendMessage(message.SendTypeToDest, nil, dest, 0, s.ttl, content))
+func (s *sender) SendTo(dest message.MsgPath, body []byte) (err error) {
+	return s.sendTo(message.NewSendMessage(message.SendTypeToDest, nil, dest, 0, s.ttl, body))
 }
 
-func (s *sender) SendAll(content []byte) (err error) {
-	return s.sendToAll(message.NewSendMessage(message.SendTypeToAll, nil, nil, 0, s.ttl, content))
+func (s *sender) SendAll(body []byte) (err error) {
+	return s.sendToAll(message.NewSendMessage(message.SendTypeToAll, nil, nil, 0, s.ttl, body))
 }
 
 func (s *sender) SendMsg(msg *message.Message) error {

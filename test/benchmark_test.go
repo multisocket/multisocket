@@ -122,14 +122,14 @@ func benchmarkSingleLatency(b *testing.B, addr string, sz int) {
 	time.Sleep(500 * time.Millisecond)
 
 	var (
-		content = make([]byte, sz)
+		body = make([]byte, sz)
 	)
 	b.SetBytes(1)
 	b.ResetTimer()
 	b.StopTimer()
 	for i := 0; i < b.N; i++ {
 		b.StartTimer()
-		if err = clisock.Send(content); err != nil {
+		if err = clisock.Send(body); err != nil {
 			b.Errorf("client send error: %s", err)
 			return
 		}
@@ -152,7 +152,7 @@ func benchmarkRoundLatency(b *testing.B, addr string, sz int) {
 	defer srvsock.Close()
 	defer clisock.Close()
 
-	var content = make([]byte, sz)
+	var body = make([]byte, sz)
 	go func() {
 		var (
 			err error
@@ -162,7 +162,7 @@ func benchmarkRoundLatency(b *testing.B, addr string, sz int) {
 			if msg, err = srvsock.RecvMsg(); err != nil {
 				return
 			}
-			if err = srvsock.SendTo(msg.Source, content); err != nil {
+			if err = srvsock.SendTo(msg.Source, body); err != nil {
 				return
 			}
 			msg.FreeAll()
@@ -177,7 +177,7 @@ func benchmarkRoundLatency(b *testing.B, addr string, sz int) {
 	b.SetBytes(1)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err = clisock.Send(content); err != nil {
+		if err = clisock.Send(body); err != nil {
 			b.Errorf("client send error: %s", err)
 			return
 		}
@@ -223,12 +223,12 @@ func benchmarkGroupLatency(b *testing.B, addr string, sz int) {
 	time.Sleep(500 * time.Millisecond)
 
 	var (
-		content = make([]byte, sz)
+		body = make([]byte, sz)
 	)
 	b.SetBytes(1)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err = clisock.Send(content); err != nil {
+		if err = clisock.Send(body); err != nil {
 			b.Errorf("client send error: %s", err)
 			return
 		}
@@ -252,7 +252,7 @@ func benchmarkSendThroughput(b *testing.B, addr string, sz int) {
 	defer clisock.Close()
 
 	go func() {
-		// just recv content
+		// just recv body
 		for {
 			msg, err := srvsock.RecvMsg()
 			if err != nil {
@@ -268,10 +268,10 @@ func benchmarkSendThroughput(b *testing.B, addr string, sz int) {
 
 	b.ResetTimer()
 	var (
-		content = make([]byte, sz)
+		body = make([]byte, sz)
 	)
 	for i := 0; i < b.N; i++ {
-		if err = clisock.Send(content); err != nil {
+		if err = clisock.Send(body); err != nil {
 			b.Errorf("client send error: %s", err)
 			return
 		}
@@ -296,11 +296,11 @@ func benchmarkRecvThroughput(b *testing.B, addr string, sz int) {
 	go func() {
 		var (
 			err     error
-			content = make([]byte, sz)
+			body = make([]byte, sz)
 		)
-		// just send content
+		// just send body
 		for {
-			if err = srvsock.Send(content); err != nil {
+			if err = srvsock.Send(body); err != nil {
 				return
 			}
 		}

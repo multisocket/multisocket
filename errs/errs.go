@@ -18,5 +18,5 @@ const (
 	ErrBadTransport          = Err("invalid or unsupported transport")
 	ErrBadMsg                = Err("bad message")
 	ErrBadProtocol           = Err("bad protocol")
-	ErrContentTooLong        = Err("content is too long")
+	ErrBodyTooLong           = Err("message body is too long")
 )

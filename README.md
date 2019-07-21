@@ -18,9 +18,9 @@ Socket is stateless, supports recveiving concurrently.
                 log.WithField("err", err).Errorf("recv")
                 continue
             }
-            s := string(msg.Content)
-            content := []byte(fmt.Sprintf("[#%d]Hello, %s", n, s))
-            if err = sock.SendTo(msg.Source, content); err != nil {
+            s := string(msg.Body)
+            body := []byte(fmt.Sprintf("[#%d]Hello, %s", n, s))
+            if err = sock.SendTo(msg.Source, body); err != nil {
                 log.WithField("err", err).Errorf("send")
             }
         }
@@ -39,11 +39,11 @@ tx/rx are independent
     }
     // sending
     go func() {
-        var content string
+        var body string
         idx := 0
         for {
-            content = fmt.Sprintf("%s#%d", name, idx)
-            if err = sock.Send([]byte(content)); err != nil {
+            body = fmt.Sprintf("%s#%d", name, idx)
+            if err = sock.Send([]byte(body)); err != nil {
                 log.WithField("err", err).Errorf("send")
             }
             log.WithField("id", idx).Infof("send")
@@ -55,10 +55,10 @@ tx/rx are independent
     // recving
     go func() {
         for {
-            if content, err = sock.Recv(); err != nil { 
+            if body, err = sock.Recv(); err != nil { 
                 log.WithField("err", err).Errorf("recv")
             }
-            fmt.Printf("%s\n", string(content))
+            fmt.Printf("%s\n", string(body))
         }
     }()
 ```

@@ -60,8 +60,8 @@ func ThroughputServer(addr string, msgSize int, count int) {
 		if err != nil {
 			log.Fatalf("Failed to recv: %v", err)
 		}
-		if len(msg.Content) != msgSize {
-			log.Fatalf("Received wrong message size: %d != %d", len(msg.Content), msgSize)
+		if len(msg.Body) != msgSize {
+			log.Fatalf("Received wrong message size: %d != %d", len(msg.Body), msgSize)
 		}
 		// return to cache to avoid GC
 		msg.FreeAll()
@@ -102,16 +102,16 @@ func ThroughputClient(addr string, msgSize int, count int) {
 	// 100 milliseconds to give TCP a chance to establish
 	time.Sleep(time.Millisecond * 100)
 
-	content := make([]byte, msgSize)
+	body := make([]byte, msgSize)
 	for i := 0; i < msgSize; i++ {
-		content[i] = 111
+		body[i] = 111
 	}
 
 	// send the start message
 	s.Send(nil)
 
 	for i := 0; i < count; i++ {
-		if err = s.Send(content); err != nil {
+		if err = s.Send(body); err != nil {
 			log.Fatalf("Failed Send: %v", err)
 		}
 	}

@@ -17,13 +17,13 @@ import (
 type pipe struct {
 	options.Options
 	transport.Connection
-	closeOnEOF           bool
-	raw                  bool
-	maxRecvContentLength uint32
-	id                   uint32
-	parent               *connector
-	d                    *dialer
-	l                    *listener
+	closeOnEOF        bool
+	raw               bool
+	maxRecvBodyLength uint32
+	id                uint32
+	parent            *connector
+	d                 *dialer
+	l                 *listener
 
 	// funcs
 	recvMsgFunc func() (msg *message.Message, err error)
@@ -44,11 +44,11 @@ var (
 
 func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener, opts options.Options) *pipe {
 	p := &pipe{
-		Options:              opts,
-		Connection:           tc,
-		closeOnEOF:           Options.Pipe.CloseOnEOF.ValueFrom(opts),
-		raw:                  Options.Pipe.Raw.ValueFrom(opts),
-		maxRecvContentLength: Options.Pipe.MaxRecvContentLength.ValueFrom(opts),
+		Options:           opts,
+		Connection:        tc,
+		closeOnEOF:        Options.Pipe.CloseOnEOF.ValueFrom(opts),
+		raw:               Options.Pipe.Raw.ValueFrom(opts),
+		maxRecvBodyLength: Options.Pipe.MaxRecvBodyLength.ValueFrom(opts),
 
 		id:     pipeID.NextID(),
 		parent: parent,
@@ -143,7 +143,7 @@ func (p *pipe) sendMsg(msg *message.Message) (err error) {
 	}
 
 	// if zero copy {
-	// 	_, err = p.Writev(msg.Encode(), msg.Content)
+	// 	_, err = p.Writev(msg.Encode(), msg.Body)
 	// } else {
 	_, err = p.Write(msg.Encode())
 	// }
@@ -156,7 +156,7 @@ func (p *pipe) sendRawMsg(msg *message.Message) (err error) {
 		return
 	}
 
-	_, err = p.Write(msg.Content)
+	_, err = p.Write(msg.Body)
 	return
 }
 
@@ -165,7 +165,7 @@ func (p *pipe) RecvMsg() (msg *message.Message, err error) {
 }
 
 func (p *pipe) recvMsg() (msg *message.Message, err error) {
-	return message.NewMessageFromReader(p.id, p, p.metaBuf, p.maxRecvContentLength)
+	return message.NewMessageFromReader(p.id, p, p.metaBuf, p.maxRecvBodyLength)
 }
 
 func (p *pipe) recvRawMsg() (msg *message.Message, err error) {

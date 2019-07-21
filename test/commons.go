@@ -72,7 +72,7 @@ func prepareSocks(addr string, ovses ...options.OptionValues) (srvsock, clisock 
 	return
 }
 
-func genRandomContent(sz int) (b []byte) {
+func genRandomBytes(sz int) (b []byte) {
 	b = make([]byte, sz)
 	rand.Read(b)
 	return

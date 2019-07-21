@@ -52,10 +52,10 @@ func LatencyServer(addr string, msgSize int, roundTrips int) {
 		if err != nil {
 			log.Fatalf("Failed to recv: %v", err)
 		}
-		if len(msg.Content) != msgSize {
-			log.Fatalf("Received wrong message size: %d != %d", len(msg.Content), msgSize)
+		if len(msg.Body) != msgSize {
+			log.Fatalf("Received wrong message size: %d != %d", len(msg.Body), msgSize)
 		}
-		if err = s.SendTo(msg.Source, msg.Content); err != nil {
+		if err = s.SendTo(msg.Source, msg.Body); err != nil {
 			log.Fatalf("Failed to send: %v", err)
 		}
 		msg.FreeAll()
@@ -85,12 +85,12 @@ func LatencyClient(addr string, msgSize int, roundTrips int) {
 	time.Sleep(time.Millisecond * 100)
 	var (
 		msg     *message.Message
-		content = make([]byte, msgSize)
+		body = make([]byte, msgSize)
 	)
 
 	start := time.Now()
 	for i := 0; i < roundTrips; i++ {
-		if err = s.Send(content); err != nil {
+		if err = s.Send(body); err != nil {
 			log.Fatalf("Failed Send: %v", err)
 		}
 		if msg, err = s.RecvMsg(); err != nil {
