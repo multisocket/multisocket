@@ -116,7 +116,7 @@ func (s *sender) doPushMsg(msg *message.Message, sendq chan<- *message.Message) 
 }
 
 func (s *sender) resendMsg(msg *message.Message) error {
-	if msg.Header.SendType() == message.SendTypeToOne {
+	if msg.SendType() == message.SendTypeToOne {
 		// only resend when send to one, so we can choose another pipe to send.
 		return s.doPushMsg(msg, s.sendq)
 	}
@@ -208,7 +208,7 @@ func (s *sender) doSendMsg(p *pipe, msg *message.Message) (err error) {
 }
 
 func (s *sender) sendTo(msg *message.Message) (err error) {
-	if msg.Header.Distance == 0 {
+	if msg.Distance == 0 {
 		// already arrived, just drop
 		return
 	}
@@ -245,11 +245,11 @@ func (s *sender) SendAll(content []byte) (err error) {
 }
 
 func (s *sender) SendMsg(msg *message.Message) error {
-	if msg.Header.TTL == 0 {
+	if msg.TTL == 0 {
 		// drop msg
 		return nil
 	}
-	switch msg.Header.SendType() {
+	switch msg.SendType() {
 	case message.SendTypeToDest:
 		return s.sendTo(msg)
 	case message.SendTypeToOne:

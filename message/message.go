@@ -17,8 +17,8 @@ const (
 )
 
 type (
-	// Header message meta data
-	Header struct {
+	// Meta message's meta data
+	Meta struct {
 		// Flags
 		Flags    uint8  // 6:other flags|2:send type to/one,all,dest
 		TTL      uint8  // time to live
@@ -32,8 +32,8 @@ type (
 
 	// Message is a message
 	Message struct {
-		buf         []byte
-		Header      Header
+		buf []byte // decode/encode buffer
+		Meta
 		Source      MsgPath
 		Destination MsgPath
 		Content     []byte
@@ -48,12 +48,12 @@ type (
 	}
 )
 
-// HeaderSize is the Header's memory byte size.
-// TODO: update when header modifed
-const HeaderSize = 8
+// MetaSize is the Meta data's memory byte size.
+// TODO: update when Meta modifed
+const MetaSize = 8
 
 var (
-	emptyHeader = Header{
+	emptyMeta = Meta{
 		TTL: DefaultMsgTTL,
 	}
 	msgPool = &sync.Pool{
@@ -97,46 +97,46 @@ const (
 )
 
 // SendType get message's send type
-func (h *Header) SendType() uint8 {
-	return h.Flags & sendTypeMask
+func (m *Meta) SendType() uint8 {
+	return m.Flags & sendTypeMask
 }
 
-// HasFlags check if header has flags setted.
-func (h *Header) HasFlags(flags uint8) bool {
-	return h.Flags&flags == flags
+// HasFlags check if meta data has flags setted.
+func (m *Meta) HasFlags(flags uint8) bool {
+	return m.Flags&flags == flags
 }
 
-// HasAnyFlags check if header has any flags setted.
-func (h *Header) HasAnyFlags() bool {
-	return h.Flags&flagsMask != 0
+// HasAnyFlags check if meta data has any flags setted.
+func (m *Meta) HasAnyFlags() bool {
+	return m.Flags&flagsMask != 0
 }
 
 // ClearFlags clear flags
-func (h *Header) ClearFlags(flags uint8) uint8 {
-	return h.Flags & (flags ^ 0xff)
+func (m *Meta) ClearFlags(flags uint8) uint8 {
+	return m.Flags & (flags ^ 0xff)
 }
 
-// encodeTo encode header to bytes
-func (h *Header) encodeTo(b []byte) []byte {
-	b[0] = h.Flags
-	b[1] = h.TTL
-	b[2] = h.Hops
-	b[3] = h.Distance
-	binary.BigEndian.PutUint32(b[4:], h.Length)
+// encodeTo encode meta data to bytes
+func (m *Meta) encodeTo(b []byte) []byte {
+	b[0] = m.Flags
+	b[1] = m.TTL
+	b[2] = m.Hops
+	b[3] = m.Distance
+	binary.BigEndian.PutUint32(b[4:], m.Length)
 
 	return b
 }
 
-// decodeHeaderFrom reader
-func decodeHeaderFrom(r io.Reader, a []byte, h *Header) (err error) {
+// decodeMetaFrom reader
+func decodeMetaFrom(r io.Reader, a []byte, m *Meta) (err error) {
 	if _, err = io.ReadFull(r, a); err != nil {
 		return
 	}
-	h.Flags = a[0]
-	h.TTL = a[1]
-	h.Hops = a[2]
-	h.Distance = a[3]
-	h.Length = binary.BigEndian.Uint32(a[4:])
+	m.Flags = a[0]
+	m.TTL = a[1]
+	m.Hops = a[2]
+	m.Distance = a[3]
+	m.Length = binary.BigEndian.Uint32(a[4:])
 	return nil
 }
 
@@ -163,24 +163,24 @@ func (path MsgPath) NextID() (id uint32, source MsgPath) {
 }
 
 // NewMessageFromReader create a message from reader
-func NewMessageFromReader(pid uint32, r io.ReadCloser, headerBuf []byte, maxLength uint32) (msg *Message, err error) {
+func NewMessageFromReader(pid uint32, r io.ReadCloser, metaBuf []byte, maxLength uint32) (msg *Message, err error) {
 	var (
-		header     *Header
+		meta       *Meta
 		from, to   int
 		sourceSize int
 		destSize   int
 		length     int
 	)
 	msg = msgPool.Get().(*Message)
-	header = &msg.Header
+	meta = &msg.Meta
 
-	if err = decodeHeaderFrom(r, headerBuf, header); err != nil {
+	if err = decodeMetaFrom(r, metaBuf, meta); err != nil {
 		msg.FreeAll()
 		msg = nil
 		// err = errs.ErrBadMsg
 		return
 	}
-	if maxLength != 0 && header.Length > maxLength {
+	if maxLength != 0 && meta.Length > maxLength {
 		msg.FreeAll()
 		msg = nil
 		r.Close()
@@ -188,14 +188,14 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, headerBuf []byte, maxLeng
 		return
 	}
 
-	sourceSize = 4 * int(header.Hops+1)
-	if header.Distance > 0 {
-		destSize = 4 * int(header.Distance-1)
+	sourceSize = 4 * int(meta.Hops+1)
+	if meta.Distance > 0 {
+		destSize = 4 * int(meta.Distance-1)
 	}
-	length = int(header.Length)
-	msg.buf = bytespool.Alloc(HeaderSize + sourceSize + destSize + length)
+	length = int(meta.Length)
+	msg.buf = bytespool.Alloc(MetaSize + sourceSize + destSize + length)
 	// Source
-	from = HeaderSize
+	from = MetaSize
 	to = from + sourceSize
 	msg.Source = msg.buf[from:to:to]
 	if _, err = io.ReadFull(r, msg.Source[:sourceSize-4]); err != nil {
@@ -205,11 +205,11 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, headerBuf []byte, maxLeng
 	}
 	// update source, add current pipe id
 	binary.BigEndian.PutUint32(msg.Source[sourceSize-4:], pid)
-	header.Hops++
-	header.TTL--
+	meta.Hops++
+	meta.TTL--
 
 	// Destination
-	if header.Distance > 0 {
+	if meta.Distance > 0 {
 		if destSize > 0 {
 			from = to
 			to = from + destSize
@@ -226,7 +226,7 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, headerBuf []byte, maxLeng
 			msg = nil
 			return
 		}
-		header.Distance--
+		meta.Distance--
 	}
 
 	// Content
@@ -245,34 +245,34 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, headerBuf []byte, maxLeng
 // NewRawRecvMessage create a new raw recv message
 func NewRawRecvMessage(pid uint32, content []byte) (msg *Message) {
 	var (
-		header     *Header
+		meta     *Meta
 		from, to   int
 		sourceSize int
 		length     int
 	)
 	// raw message is always send to one.
 	msg = msgPool.Get().(*Message)
-	msg.Header = Header{
+	msg.Meta = Meta{
 		Flags:    MsgFlagRaw | SendTypeToOne,
 		TTL:      DefaultMsgTTL,
 		Distance: 0,
 		Length:   uint32(len(content)),
 	}
-	header = &msg.Header
+	meta = &msg.Meta
 
 	sourceSize = 4
 	length = len(content)
 
-	msg.buf = bytespool.Alloc(HeaderSize + sourceSize + length)
+	msg.buf = bytespool.Alloc(MetaSize + sourceSize + length)
 
 	// Source
-	from = HeaderSize
+	from = MetaSize
 	to = from + sourceSize
 	msg.Source = msg.buf[from:to:to]
 	// update source, add current pipe id
 	binary.BigEndian.PutUint32(msg.Source, pid)
-	header.Hops++
-	header.TTL--
+	meta.Hops++
+	meta.TTL--
 
 	if content != nil {
 		// nil raw message is EOF
@@ -298,7 +298,7 @@ func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, c
 		ttl = DefaultMsgTTL
 	}
 	msg := msgPool.Get().(*Message)
-	msg.Header = Header{
+	msg.Meta = Meta{
 		Flags:    flags | sendType,
 		TTL:      ttl,
 		Hops:     src.Length(),
@@ -313,8 +313,8 @@ func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, c
 	// 	length = 0
 	// }
 
-	msg.buf = bytespool.Alloc(HeaderSize + sourceSize + destSize + length)
-	to = HeaderSize
+	msg.buf = bytespool.Alloc(MetaSize + sourceSize + destSize + length)
+	to = MetaSize
 
 	// Source
 	if sourceSize > 0 {
@@ -325,7 +325,7 @@ func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, c
 	}
 
 	// Destination
-	if msg.Header.Distance > 0 {
+	if msg.Meta.Distance > 0 {
 		from = to
 		to = from + destSize
 		msg.Destination = msg.buf[from:to:to]
@@ -347,7 +347,7 @@ func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, c
 
 // Encode encode msg'b body parts.
 func (msg *Message) Encode() []byte {
-	msg.Header.encodeTo(msg.buf)
+	msg.Meta.encodeTo(msg.buf)
 	return msg.buf
 }
 
@@ -355,13 +355,13 @@ func (msg *Message) Encode() []byte {
 // TODO: try effective way, like reference counting.
 func (msg *Message) Dup() (dup *Message) {
 	dup = msgPool.Get().(*Message)
-	dup.Header = msg.Header
+	dup.Meta = msg.Meta
 
 	dup.buf = bytespool.Alloc(len(msg.buf))
 	copy(dup.buf, msg.buf)
-	sourceSize := 4 * int(dup.Header.Hops)
-	destSize := 4 * int(dup.Header.Distance)
-	length := int(dup.Header.Length)
+	sourceSize := 4 * int(dup.Meta.Hops)
+	destSize := 4 * int(dup.Meta.Distance)
+	length := int(dup.Meta.Length)
 
 	dup.Source = dup.buf[:sourceSize:sourceSize]
 	dup.Destination = dup.buf[sourceSize : sourceSize+destSize : sourceSize+destSize]
@@ -380,7 +380,7 @@ func (msg *Message) FreeAll() {
 // Free put msg to pool
 func (msg *Message) Free() {
 	msg.buf = nil
-	msg.Header = emptyHeader
+	msg.Meta = emptyMeta
 	msg.Source = nil
 	msg.Destination = nil
 	// if zero copy {

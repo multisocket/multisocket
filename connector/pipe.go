@@ -29,8 +29,8 @@ type pipe struct {
 	recvMsgFunc func() (msg *message.Message, err error)
 	sendMsgFunc func(msg *message.Message) (err error)
 
-	// for read message header
-	headerBuf []byte
+	// for read message meta data
+	metaBuf []byte
 	// for recv raw message
 	rawRecvBuf []byte
 
@@ -56,7 +56,7 @@ func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener,
 		l:      l,
 
 		// alloc
-		headerBuf: make([]byte, message.HeaderSize),
+		metaBuf: make([]byte, message.MetaSize),
 	}
 	p.sendMsgFunc = p.sendMsg
 	p.recvMsgFunc = p.recvMsg
@@ -136,7 +136,7 @@ func (p *pipe) SendMsg(msg *message.Message) (err error) {
 }
 
 func (p *pipe) sendMsg(msg *message.Message) (err error) {
-	if msg.Header.HasFlags(message.MsgFlagRaw) {
+	if msg.HasFlags(message.MsgFlagRaw) {
 		// ignore raw messages. raw message is only for stream, forward raw message makes no sense,
 		// raw connection can not reply to message source.
 		return nil
@@ -151,7 +151,7 @@ func (p *pipe) sendMsg(msg *message.Message) (err error) {
 }
 
 func (p *pipe) sendRawMsg(msg *message.Message) (err error) {
-	if msg.Header.HasAnyFlags() {
+	if msg.HasAnyFlags() {
 		// ignore none normal messages.
 		return
 	}
@@ -165,7 +165,7 @@ func (p *pipe) RecvMsg() (msg *message.Message, err error) {
 }
 
 func (p *pipe) recvMsg() (msg *message.Message, err error) {
-	return message.NewMessageFromReader(p.id, p, p.headerBuf, p.maxRecvContentLength)
+	return message.NewMessageFromReader(p.id, p, p.metaBuf, p.maxRecvContentLength)
 }
 
 func (p *pipe) recvRawMsg() (msg *message.Message, err error) {

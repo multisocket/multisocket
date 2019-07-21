@@ -167,7 +167,7 @@ RECVING:
 			if s.noRecv {
 				// just drop
 				msg.FreeAll()
-			} else if msg.Header.HasFlags(message.MsgFlagInternal) {
+			} else if msg.HasFlags(message.MsgFlagInternal) {
 				// FIXME: handle internal messages.
 				msg.FreeAll()
 			} else {
