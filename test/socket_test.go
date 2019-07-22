@@ -35,7 +35,7 @@ func TestSocketSendRecv(t *testing.T) {
 	}
 }
 
-func TestSocketMaxRecvBodyLength(t *testing.T) {
+func TestSocketMaxRecvContentLength(t *testing.T) {
 	for idx := range sizes {
 		if idx%3 != 0 {
 			continue
@@ -51,7 +51,7 @@ func TestSocketMaxRecvBodyLength(t *testing.T) {
 				tp := transports[idx]
 				t.Run(tp.name, func(t *testing.T) {
 					addr := tp.addr
-					testSocketMaxRecvBodyLength(t, addr, sz)
+					testSocketMaxRecvContentLength(t, addr, sz)
 				})
 			}
 		})
@@ -102,7 +102,7 @@ func testSocketSendRecv(t *testing.T, addr string, sz int) {
 				}
 				break
 			}
-			if err = srvsock.SendTo(msg.Source, msg.Body); err != nil {
+			if err = srvsock.SendTo(msg.Source, msg.Content); err != nil {
 				t.Errorf("SendTo error: %s", err)
 			}
 			msg.FreeAll()
@@ -111,33 +111,33 @@ func testSocketSendRecv(t *testing.T, addr string, sz int) {
 
 	var (
 		randSeed = initRandSeed(0)
-		body  []byte
+		content  []byte
 		msg      *message.Message
 	)
 	szMin := sz / 2
 	for i := 0; i < 2000; i++ {
-		body = genRandomBytes(szMin + rand.Intn(szMin+1))
-		if err = clisock.Send(body); err != nil {
+		content = genRandomContent(szMin + rand.Intn(szMin+1))
+		if err = clisock.Send(content); err != nil {
 			t.Errorf("Send error: %s", err)
 		}
 		if msg, err = clisock.RecvMsg(); err != nil {
 			t.Errorf("Recv error: %s", err)
 		}
-		if !bytes.Equal(body, msg.Body) {
-			t.Errorf("send/recv not equal: randSeed=%d, i=%d, len=%d/%d", randSeed, i, len(body), len(msg.Body))
+		if !bytes.Equal(content, msg.Content) {
+			t.Errorf("send/recv not equal: randSeed=%d, i=%d, len=%d/%d", randSeed, i, len(content), len(msg.Content))
 		}
 		msg.FreeAll()
 	}
 }
 
-func testSocketMaxRecvBodyLength(t *testing.T, addr string, sz int) {
+func testSocketMaxRecvContentLength(t *testing.T, addr string, sz int) {
 	var (
 		err     error
 		srvsock multisocket.Socket
 		clisock multisocket.Socket
 	)
-	maxRecvBodyLength := sz * 3 / 4
-	if srvsock, clisock, err = prepareSocks(addr, options.OptionValues{connector.Options.Pipe.MaxRecvBodyLength: maxRecvBodyLength}); err != nil {
+	maxRecvContentLength := sz * 3 / 4
+	if srvsock, clisock, err = prepareSocks(addr, options.OptionValues{connector.Options.Pipe.MaxRecvContentLength: maxRecvContentLength}); err != nil {
 		t.Errorf("connect error: %s", err)
 	}
 	defer srvsock.Close()
@@ -157,8 +157,8 @@ func testSocketMaxRecvBodyLength(t *testing.T, addr string, sz int) {
 				}
 				break
 			}
-			if len(msg.Body) > maxRecvBodyLength {
-				t.Errorf("maxRecvBodyLength=%d, body=%d", maxRecvBodyLength, len(msg.Body))
+			if len(msg.Content) > maxRecvContentLength {
+				t.Errorf("maxRecvContentLength=%d, content=%d", maxRecvContentLength, len(msg.Content))
 			}
 			msg.FreeAll()
 		}
@@ -166,11 +166,11 @@ func testSocketMaxRecvBodyLength(t *testing.T, addr string, sz int) {
 	}()
 
 	var (
-		body []byte
+		content []byte
 	)
 	for i := 1; i <= count+10; i++ {
-		body = genRandomBytes(maxRecvBodyLength - count + i)
-		if err = clisock.Send(body); err != nil {
+		content = genRandomContent(maxRecvContentLength - count + i)
+		if err = clisock.Send(content); err != nil {
 			t.Errorf("Send error: %s", err)
 		}
 	}
@@ -202,8 +202,8 @@ func testSocketCloseSender(t *testing.T, addr string, sz int) {
 	go func() {
 		szMin := sz / 2
 		for i := 0; i < N; i++ {
-			body := genRandomBytes(szMin + rand.Intn(szMin+1))
-			if err = clisock.Send(body); err != nil {
+			content := genRandomContent(szMin + rand.Intn(szMin+1))
+			if err = clisock.Send(content); err != nil {
 				t.Errorf("Send error: %s", err)
 			}
 		}

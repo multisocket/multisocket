@@ -51,10 +51,10 @@ func ReqRepLatencyServer(addr string, msgSize int, roundTrips int) {
 		if err != nil {
 			log.Fatalf("Failed to recv: %v", err)
 		}
-		if len(msg.Body) != msgSize {
-			log.Fatalf("Received wrong message size: %d != %d", len(msg.Body), msgSize)
+		if len(msg.Content) != msgSize {
+			log.Fatalf("Received wrong message size: %d != %d", len(msg.Content), msgSize)
 		}
-		if err = s.SendTo(msg.Source, msg.Body); err != nil {
+		if err = s.SendTo(msg.Source, msg.Content); err != nil {
 			log.Fatalf("Failed to send: %v", err)
 		}
 		msg.FreeAll()
@@ -85,13 +85,13 @@ func ReqRepLatencyClient(addr string, msgSize int, roundTrips int) {
 
 	var (
 		msg     *message.Message
-		body = make([]byte, msgSize)
+		content = make([]byte, msgSize)
 	)
 
 	total := time.Duration(0)
 	for i := 0; i < roundTrips; i++ {
 		start := time.Now()
-		if err = s.Send(body); err != nil {
+		if err = s.Send(content); err != nil {
 			log.Fatalf("Failed Send: %v", err)
 		}
 		if msg, err = s.RecvMsg(); err != nil {

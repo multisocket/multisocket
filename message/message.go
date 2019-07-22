@@ -19,11 +19,12 @@ const (
 type (
 	// Meta message's meta data
 	Meta struct {
-		flags    uint8  // 6:other flags|2:send type to/one,all,dest
+		// Flags
+		Flags    uint8  // 6:other flags|2:send type to/one,all,dest
 		TTL      uint8  // time to live
 		Hops     uint8  // node count from origin
 		Distance uint8  // node count to destination
-		Length   uint32 // body length
+		Length   uint32 // content length
 	}
 
 	// MsgPath is message's path composed of pipe ids(uint32) traceback.
@@ -35,12 +36,12 @@ type (
 		Meta
 		Source      MsgPath
 		Destination MsgPath
-		Body        []byte
+		Content     []byte
 	}
 
 	// TODO: use internal message
 
-	// InternalMsg internal message body structure.
+	// InternalMsg internal message content structure.
 	InternalMsg struct {
 		Type uint8
 		// others
@@ -97,27 +98,27 @@ const (
 
 // SendType get message's send type
 func (m *Meta) SendType() uint8 {
-	return m.flags & sendTypeMask
+	return m.Flags & sendTypeMask
 }
 
 // HasFlags check if meta data has flags setted.
 func (m *Meta) HasFlags(flags uint8) bool {
-	return m.flags&flags == flags
+	return m.Flags&flags == flags
 }
 
 // HasAnyFlags check if meta data has any flags setted.
 func (m *Meta) HasAnyFlags() bool {
-	return m.flags&flagsMask != 0
+	return m.Flags&flagsMask != 0
 }
 
 // ClearFlags clear flags
 func (m *Meta) ClearFlags(flags uint8) uint8 {
-	return m.flags & (flags ^ 0xff)
+	return m.Flags & (flags ^ 0xff)
 }
 
 // encodeTo encode meta data to bytes
 func (m *Meta) encodeTo(b []byte) []byte {
-	b[0] = m.flags
+	b[0] = m.Flags
 	b[1] = m.TTL
 	b[2] = m.Hops
 	b[3] = m.Distance
@@ -131,7 +132,7 @@ func decodeMetaFrom(r io.Reader, a []byte, m *Meta) (err error) {
 	if _, err = io.ReadFull(r, a); err != nil {
 		return
 	}
-	m.flags = a[0]
+	m.Flags = a[0]
 	m.TTL = a[1]
 	m.Hops = a[2]
 	m.Distance = a[3]
@@ -183,7 +184,7 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, metaBuf []byte, maxLength
 		msg.FreeAll()
 		msg = nil
 		r.Close()
-		err = errs.ErrBodyTooLong
+		err = errs.ErrContentTooLong
 		return
 	}
 
@@ -228,11 +229,11 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, metaBuf []byte, maxLength
 		meta.Distance--
 	}
 
-	// Body
+	// Content
 	from = to
 	to = from + length
-	msg.Body = msg.buf[from:to:to]
-	if _, err = io.ReadFull(r, msg.Body); err != nil {
+	msg.Content = msg.buf[from:to:to]
+	if _, err = io.ReadFull(r, msg.Content); err != nil {
 		msg.FreeAll()
 		msg = nil
 		return
@@ -242,9 +243,9 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, metaBuf []byte, maxLength
 }
 
 // NewRawRecvMessage create a new raw recv message
-func NewRawRecvMessage(pid uint32, body []byte) (msg *Message) {
+func NewRawRecvMessage(pid uint32, content []byte) (msg *Message) {
 	var (
-		meta       *Meta
+		meta     *Meta
 		from, to   int
 		sourceSize int
 		length     int
@@ -252,15 +253,15 @@ func NewRawRecvMessage(pid uint32, body []byte) (msg *Message) {
 	// raw message is always send to one.
 	msg = msgPool.Get().(*Message)
 	msg.Meta = Meta{
-		flags:    MsgFlagRaw | SendTypeToOne,
+		Flags:    MsgFlagRaw | SendTypeToOne,
 		TTL:      DefaultMsgTTL,
 		Distance: 0,
-		Length:   uint32(len(body)),
+		Length:   uint32(len(content)),
 	}
 	meta = &msg.Meta
 
 	sourceSize = 4
-	length = len(body)
+	length = len(content)
 
 	msg.buf = bytespool.Alloc(MetaSize + sourceSize + length)
 
@@ -273,19 +274,19 @@ func NewRawRecvMessage(pid uint32, body []byte) (msg *Message) {
 	meta.Hops++
 	meta.TTL--
 
-	if body != nil {
+	if content != nil {
 		// nil raw message is EOF
 		from = to
 		to = from + length
-		msg.Body = msg.buf[from:to:to]
-		copy(msg.Body, body)
+		msg.Content = msg.buf[from:to:to]
+		copy(msg.Content, content)
 	}
 
 	return
 }
 
 // NewSendMessage create a message to send
-func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, body []byte) *Message {
+func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, content []byte) *Message {
 	var (
 		from, to   int
 		sourceSize int
@@ -298,16 +299,16 @@ func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, b
 	}
 	msg := msgPool.Get().(*Message)
 	msg.Meta = Meta{
-		flags:    flags | sendType,
+		Flags:    flags | sendType,
 		TTL:      ttl,
 		Hops:     src.Length(),
 		Distance: dest.Length(),
-		Length:   uint32(len(body)),
+		Length:   uint32(len(content)),
 	}
 
 	sourceSize = len(src)
 	destSize = len(dest)
-	length = len(body)
+	length = len(content)
 	// if zero copy {
 	// 	length = 0
 	// }
@@ -331,14 +332,14 @@ func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, b
 		copy(msg.Destination, dest)
 	}
 
-	// Body
+	// Content
 	// if zero copy {
-	// 	msg.Body = body
+	// 	msg.Content = content
 	// } else {
 	from = to
 	to = from + length
-	msg.Body = msg.buf[from:to:to]
-	copy(msg.Body, body)
+	msg.Content = msg.buf[from:to:to]
+	copy(msg.Content, content)
 	// }
 
 	return msg
@@ -364,7 +365,7 @@ func (msg *Message) Dup() (dup *Message) {
 
 	dup.Source = dup.buf[:sourceSize:sourceSize]
 	dup.Destination = dup.buf[sourceSize : sourceSize+destSize : sourceSize+destSize]
-	dup.Body = dup.buf[sourceSize+destSize : sourceSize+destSize+length : sourceSize+destSize+length]
+	dup.Content = dup.buf[sourceSize+destSize : sourceSize+destSize+length : sourceSize+destSize+length]
 
 	return dup
 }
@@ -383,9 +384,9 @@ func (msg *Message) Free() {
 	msg.Source = nil
 	msg.Destination = nil
 	// if zero copy {
-	// 	bytespool.Free(msg.Body)
+	// 	bytespool.Free(msg.Content)
 	// }
-	msg.Body = nil
+	msg.Content = nil
 	msgPool.Put(msg)
 }
 

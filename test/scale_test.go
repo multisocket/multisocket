@@ -109,10 +109,10 @@ func testScalabilitySendAll(t *testing.T, addr string, loops int, threads int) {
 
 	sendStartAt := time.Now()
 	var (
-		body = []byte("hello")
+		content = []byte("hello")
 	)
 	for i := 0; i < loops; i++ {
-		if err = ssock.SendAll(body); err != nil {
+		if err = ssock.SendAll(content); err != nil {
 			t.Errorf("sendAll error: %s", err)
 		}
 	}
@@ -140,7 +140,7 @@ func scalabilitySendAllClient(t *testing.T, idx int, addr string, errp *error, l
 	var (
 		err         error
 		msg         *message.Message
-		bodyRecv = []byte("hello")
+		contentRecv = []byte("hello")
 	)
 
 	// send start signal
@@ -154,7 +154,7 @@ func scalabilitySendAllClient(t *testing.T, idx int, addr string, errp *error, l
 			*errp = err
 			return
 		}
-		if !bytes.Equal(msg.Body, bodyRecv) {
+		if !bytes.Equal(msg.Content, contentRecv) {
 			*errp = fmt.Errorf("response mismatch: %d/%d", i, idx)
 			return
 		}
@@ -181,15 +181,15 @@ func scalabilitySendReplyClient(t *testing.T, idx int, addr string, errp *error,
 
 	var (
 		err          error
-		body      = []byte("ping")
+		content      = []byte("ping")
 		msg          *message.Message
-		bodyReply = []byte("pong")
+		contentReply = []byte("pong")
 	)
 	for i := 0; i < loops; i++ {
 		// Inject a random sleep to avoid pounding the CPU too hard.
 		time.Sleep(time.Duration(rand.Int31n(10000)) * time.Microsecond)
 
-		if err = sock.Send(body); err != nil {
+		if err = sock.Send(content); err != nil {
 			*errp = err
 			return
 		}
@@ -198,7 +198,7 @@ func scalabilitySendReplyClient(t *testing.T, idx int, addr string, errp *error,
 			*errp = err
 			return
 		}
-		if !bytes.Equal(msg.Body, bodyReply) {
+		if !bytes.Equal(msg.Content, contentReply) {
 			*errp = fmt.Errorf("response mismatch: %d/%d", i, idx)
 			return
 		}
@@ -212,15 +212,15 @@ func scalabilitySendReplyClient(t *testing.T, idx int, addr string, errp *error,
 func scalabilitySendReplyServer(t *testing.T, sock multisocket.Socket) {
 	defer sock.Close()
 	var (
-		err       error
-		msg       *message.Message
-		replyBody = []byte("pong")
+		err         error
+		msg         *message.Message
+		repyContent = []byte("pong")
 	)
 	for {
 		if msg, err = sock.RecvMsg(); err != nil {
 			return
 		}
-		if err = sock.SendTo(msg.Source, replyBody); err != nil {
+		if err = sock.SendTo(msg.Source, repyContent); err != nil {
 			return
 		}
 		msg.FreeAll()
