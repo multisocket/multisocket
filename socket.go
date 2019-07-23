@@ -2,11 +2,13 @@ package multisocket
 
 import (
 	"sync"
+	"time"
 
 	"github.com/multisocket/multisocket/connector"
 	"github.com/multisocket/multisocket/errs"
 	"github.com/multisocket/multisocket/message"
 	"github.com/multisocket/multisocket/options"
+	"github.com/multisocket/multisocket/utils"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -25,12 +27,22 @@ type (
 		noRecv bool
 		recvq  chan *message.Message
 		// send
-		*sender
+		noSend         bool
+		ttl            uint8
+		bestEffort     bool
+		sendq          chan *message.Message
+		senderWg       *sync.WaitGroup
+		senderStopTm   *utils.Timer
+		senderStoppedq chan struct{}
 	}
 
 	pipe struct {
 		connector.Pipe
-		*pipeSender
+		// send
+		stopq chan struct{}
+		sendq chan *message.Message
+		// TODO: use a better way to support inproc.channel like transport: free payload internal
+		freeAll bool
 	}
 )
 
@@ -44,13 +56,20 @@ func New(ovs options.OptionValues) Socket {
 		Options: options.NewOptionsWithValues(ovs),
 		closedq: make(chan struct{}),
 		pipes:   make(map[uint32]*pipe),
+		// send
+		senderWg:       &sync.WaitGroup{},
+		senderStopTm:   utils.NewTimer(),
+		senderStoppedq: make(chan struct{}),
 	}
 	s.connector = connector.NewWithOptions(s.Options)
 	s.ConnectorAction = s.connector
-	s.sender = newSender(s)
 	// init option values
 	s.onOptionChange(Options.NoRecv, nil, nil)
 	s.onOptionChange(Options.RecvQueueSize, nil, nil)
+	s.onOptionChange(Options.NoSend, nil, nil)
+	s.onOptionChange(Options.SendQueueSize, nil, nil)
+	s.onOptionChange(Options.SendTTL, nil, nil)
+	s.onOptionChange(Options.SendBestEffort, nil, nil)
 
 	s.Options.AddOptionChangeHook(s.onOptionChange)
 
@@ -68,14 +87,28 @@ func (s *socket) onOptionChange(opt options.Option, oldVal, newVal interface{}) 
 		s.noRecv = s.GetOptionDefault(Options.NoRecv).(bool)
 	case Options.RecvQueueSize:
 		s.recvq = make(chan *message.Message, s.recvQueueSize())
-	default:
-		return s.sender.onOptionChange(opt, oldVal, newVal)
+	case Options.NoRecv:
+		s.noSend = s.GetOptionDefault(Options.NoSend).(bool)
+	case Options.SendQueueSize:
+		s.sendq = make(chan *message.Message, s.sendQueueSize())
+	case Options.SendTTL:
+		s.ttl = s.GetOptionDefault(Options.SendTTL).(uint8)
+	case Options.SendBestEffort:
+		s.bestEffort = s.GetOptionDefault(Options.SendBestEffort).(bool)
 	}
 	return nil
 }
 
 func (s *socket) recvQueueSize() uint16 {
 	return s.GetOptionDefault(Options.RecvQueueSize).(uint16)
+}
+
+func (s *socket) sendQueueSize() uint16 {
+	return s.GetOptionDefault(Options.SendQueueSize).(uint16)
+}
+
+func (s *socket) sendStopTimeout() time.Duration {
+	return s.GetOptionDefault(Options.SendStopTimeout).(time.Duration)
 }
 
 func (s *socket) HandlePipeEvent(e connector.PipeEvent, pipe connector.Pipe) {
@@ -89,12 +122,21 @@ func (s *socket) HandlePipeEvent(e connector.PipeEvent, pipe connector.Pipe) {
 
 func (s *socket) addPipe(cp connector.Pipe) {
 	s.Lock()
-	p := &pipe{Pipe: cp}
+	p := s.newPipe(cp)
 	s.pipes[p.ID()] = p
 	go s.receiver(p)
-	s.sender.initPipe(p)
-	go s.sender.run(p)
+	go s.sender(p)
 	s.Unlock()
+}
+
+func (s *socket) newPipe(cp connector.Pipe) *pipe {
+	return &pipe{
+		Pipe: cp,
+		// send
+		stopq:   make(chan struct{}),
+		sendq:   make(chan *message.Message, s.sendQueueSize()),
+		freeAll: cp.Transport().Scheme() != "inproc.channel",
+	}
 }
 
 func (s *socket) remPipe(id uint32) {
@@ -107,16 +149,38 @@ func (s *socket) remPipe(id uint32) {
 	delete(s.pipes, id)
 	s.Unlock()
 
-	if s.sender != nil {
-		s.sender.stopPipe(p)
-	}
+	s.stopPipe(p)
 }
 
-func (s *socket) getPipeByID(id uint32) *pipe {
-	s.socket.RLock()
-	p := s.socket.pipes[id]
-	s.socket.RUnlock()
-	return p
+func (s *socket) stopPipe(p *pipe) {
+	close(p.stopq)
+	tm := utils.NewTimerWithDuration(s.sendStopTimeout())
+	defer tm.Stop()
+DRAIN_MSG_LOOP:
+	for {
+		select {
+		case <-s.senderStoppedq:
+			break DRAIN_MSG_LOOP
+		case <-tm.C:
+			break DRAIN_MSG_LOOP
+		case msg := <-p.sendq:
+			// send to dest/all msgs
+			if err := s.doSendMsg(p, msg); err != nil {
+				break DRAIN_MSG_LOOP
+			}
+		default:
+			return
+		}
+	}
+	// drop last
+	for {
+		select {
+		case msg := <-p.sendq:
+			msg.FreeAll()
+		default:
+			return
+		}
+	}
 }
 
 // recv
@@ -184,6 +248,211 @@ RECVING:
 	}
 }
 
+// sender
+
+func (s *socket) sender(p *pipe) {
+	// start
+	s.senderWg.Add(1)
+
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "sender").
+			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
+			Debug("sender start run")
+	}
+	var (
+		err error
+		msg *message.Message
+	)
+
+	sendq := s.sendq
+	if p.IsRaw() {
+		// raw pipe should not recv send to one messages.
+		sendq = nil
+	}
+SENDING:
+	for {
+		select {
+		case <-s.closedq:
+			// send remaining messages
+		SEND_REMAINING:
+			for {
+				select {
+				case msg = <-sendq:
+					if err = s.doSendMsg(p, msg); err != nil {
+						break SEND_REMAINING
+					}
+				case <-s.senderStoppedq:
+					// timeout
+					break SEND_REMAINING
+				default:
+					break SEND_REMAINING
+				}
+			}
+			s.remPipe(p.ID())
+			break SENDING
+		case <-p.stopq:
+			break SENDING
+		case msg = <-sendq:
+		case msg = <-p.sendq:
+		}
+
+		if err = s.doSendMsg(p, msg); err != nil {
+			break SENDING
+		}
+	}
+	// done
+	s.senderWg.Done()
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "sender").
+			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
+			Debug("sender stopped run")
+	}
+}
+
+func (s *socket) doSendMsg(p *pipe, msg *message.Message) (err error) {
+	if err = p.SendMsg(msg); err != nil {
+		if s.resendMsg(msg) == nil {
+			return
+		}
+		msg.FreeAll()
+		return
+	}
+	if p.freeAll {
+		// free all
+		msg.FreeAll()
+	} else {
+		msg.Free()
+	}
+	return
+}
+
+func (s *socket) doPushMsg(msg *message.Message, sendq chan<- *message.Message) (err error) {
+	if s.bestEffort {
+		select {
+		case <-s.closedq:
+			return errs.ErrClosed
+		case sendq <- msg:
+			return nil
+		default:
+			// drop msg
+			return ErrMsgDropped
+		}
+	}
+
+	select {
+	case <-s.closedq:
+		err = errs.ErrClosed
+	case sendq <- msg:
+	}
+	return
+}
+
+func (s *socket) resendMsg(msg *message.Message) error {
+	if msg.SendType() == message.SendTypeToOne {
+		// only resend when send to one, so we can choose another pipe to send.
+		return s.doPushMsg(msg, s.sendq)
+	}
+	return errs.ErrBadMsg
+}
+
+func (s *socket) sendTo(msg *message.Message) (err error) {
+	if msg.Distance == 0 {
+		// already arrived, just drop
+		return
+	}
+
+	s.RLock()
+	p := s.pipes[msg.Destination.CurID()]
+	s.RUnlock()
+	if p == nil {
+		err = ErrBrokenPath
+		return
+	}
+
+	return s.doPushMsg(msg, p.sendq)
+}
+
+func (s *socket) sendToAll(msg *message.Message) (err error) {
+	s.RLock()
+	for _, p := range s.pipes {
+		s.doPushMsg(msg.Dup(), p.sendq)
+	}
+	s.RUnlock()
+	msg.FreeAll()
+	return nil
+}
+
+func (s *socket) Send(content []byte) (err error) {
+	if s.noSend {
+		return nil
+	}
+	return s.doPushMsg(message.NewSendMessage(0, message.SendTypeToOne, s.ttl, nil, nil, content), s.sendq)
+}
+
+func (s *socket) SendTo(dest message.MsgPath, content []byte) (err error) {
+	if s.noSend {
+		return nil
+	}
+	return s.sendTo(message.NewSendMessage(0, message.SendTypeToDest, s.ttl, nil, dest, content))
+}
+
+func (s *socket) SendAll(content []byte) (err error) {
+	if s.noSend {
+		return nil
+	}
+
+	return s.sendToAll(message.NewSendMessage(0, message.SendTypeToAll, s.ttl, nil, nil, content))
+}
+
+func (s *socket) SendMsg(msg *message.Message) error {
+	if s.noSend {
+		// drop msg
+		msg.FreeAll()
+		return nil
+	}
+
+	if msg.TTL == 0 {
+		// drop msg
+		msg.FreeAll()
+		return nil
+	}
+	switch msg.SendType() {
+	case message.SendTypeToDest:
+		return s.sendTo(msg)
+	case message.SendTypeToOne:
+		return s.doPushMsg(msg, s.sendq)
+	case message.SendTypeToAll:
+		return s.sendToAll(msg)
+	}
+	return ErrInvalidSendType
+}
+
+func (s *socket) stopSender() {
+	s.senderStopTm.Reset(s.sendStopTimeout())
+	defer s.senderStopTm.Stop()
+
+	// wait all pipes to stop
+	done := make(chan struct{})
+	go func() {
+		s.senderWg.Wait()
+		done <- struct{}{}
+	}()
+	select {
+	case <-done:
+	case <-s.senderStopTm.C:
+		close(s.senderStoppedq)
+	}
+	for {
+		// drop remaining messages
+		select {
+		case msg := <-s.sendq:
+			msg.FreeAll()
+		default:
+			return
+		}
+	}
+}
+
 // connector
 
 func (s *socket) Connector() connector.Connector {
@@ -204,9 +473,7 @@ func (s *socket) Close() error {
 	// clear pipe even handler
 	s.connector.ClearPipeEventHandler(s.HandlePipeEvent)
 
-	if s.sender != nil {
-		s.sender.close()
-	}
+	s.stopSender()
 	s.connector.Close()
 
 	return nil
