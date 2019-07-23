@@ -11,11 +11,6 @@ import (
 	"github.com/multisocket/multisocket/bytespool"
 )
 
-const (
-	// DefaultMsgTTL is default msg ttl
-	DefaultMsgTTL = uint8(16)
-)
-
 type (
 	// Meta message's meta data
 	Meta struct {
@@ -36,7 +31,8 @@ type (
 		Meta
 		Source      MsgPath
 		Destination MsgPath
-		Content     []byte
+		// TODO: support zero copy content
+		Content []byte
 	}
 
 	// TODO: use internal message
@@ -47,6 +43,9 @@ type (
 		// others
 	}
 )
+
+// DefaultMsgTTL is default msg ttl
+const DefaultMsgTTL = uint8(16)
 
 // MetaSize is the Meta data's memory byte size.
 // TODO: update when Meta modifed
@@ -147,18 +146,13 @@ func (path MsgPath) Length() uint8 {
 
 // CurID get source's current pipe id.
 func (path MsgPath) CurID() uint32 {
-	l := len(path)
-	if l < 4 {
-		return 0
-	}
-	return binary.BigEndian.Uint32(path[l-4:])
+	return binary.BigEndian.Uint32(path[:4])
 }
 
 // NextID get source's next pipe id and remain source.
 func (path MsgPath) NextID() (id uint32, source MsgPath) {
-	l := len(path)
-	id = binary.BigEndian.Uint32(path[l-4:])
-	source = path[:l-4]
+	id = binary.BigEndian.Uint32(path[:4])
+	source = path[4:]
 	return
 }
 
@@ -167,6 +161,7 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, metaBuf []byte, maxLength
 	var (
 		meta       *Meta
 		from, to   int
+		sentType   uint8
 		sourceSize int
 		destSize   int
 		length     int
@@ -188,9 +183,12 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, metaBuf []byte, maxLength
 		return
 	}
 
+	sentType = meta.SendType()
 	sourceSize = 4 * int(meta.Hops+1)
-	if meta.Distance > 0 {
+	if sentType == SendTypeToDest {
 		destSize = 4 * int(meta.Distance-1)
+	} else {
+		destSize = 4 * int(meta.Distance)
 	}
 	length = int(meta.Length)
 	msg.buf = bytespool.Alloc(MetaSize + sourceSize + destSize + length)
@@ -198,28 +196,18 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, metaBuf []byte, maxLength
 	from = MetaSize
 	to = from + sourceSize
 	msg.Source = msg.buf[from:to:to]
-	if _, err = io.ReadFull(r, msg.Source[:sourceSize-4]); err != nil {
+	if _, err = io.ReadFull(r, msg.Source[4:sourceSize]); err != nil {
 		msg.FreeAll()
 		msg = nil
 		return
 	}
 	// update source, add current pipe id
-	binary.BigEndian.PutUint32(msg.Source[sourceSize-4:], pid)
-	meta.Hops++
+	binary.BigEndian.PutUint32(msg.Source[:4], pid)
 	meta.TTL--
+	meta.Hops++
 
 	// Destination
-	if meta.Distance > 0 {
-		if destSize > 0 {
-			from = to
-			to = from + destSize
-			msg.Destination = msg.buf[from:to:to]
-			if _, err = io.ReadFull(r, msg.Destination); err != nil {
-				msg.FreeAll()
-				msg = nil
-				return
-			}
-		}
+	if sentType == SendTypeToDest {
 		// previous node's sender's pipe id
 		if _, err = io.CopyN(ioutil.Discard, r, 4); err != nil {
 			msg.FreeAll()
@@ -227,6 +215,15 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, metaBuf []byte, maxLength
 			return
 		}
 		meta.Distance--
+	} else if destSize > 0 {
+		from = to
+		to = from + destSize
+		msg.Destination = msg.buf[from:to:to]
+		if _, err = io.ReadFull(r, msg.Destination); err != nil {
+			msg.FreeAll()
+			msg = nil
+			return
+		}
 	}
 
 	// Content
@@ -245,7 +242,7 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, metaBuf []byte, maxLength
 // NewRawRecvMessage create a new raw recv message
 func NewRawRecvMessage(pid uint32, content []byte) (msg *Message) {
 	var (
-		meta     *Meta
+		meta       *Meta
 		from, to   int
 		sourceSize int
 		length     int
@@ -253,15 +250,13 @@ func NewRawRecvMessage(pid uint32, content []byte) (msg *Message) {
 	// raw message is always send to one.
 	msg = msgPool.Get().(*Message)
 	msg.Meta = Meta{
-		Flags:    MsgFlagRaw | SendTypeToOne,
-		TTL:      DefaultMsgTTL,
-		Distance: 0,
-		Length:   uint32(len(content)),
+		Flags:  MsgFlagRaw | SendTypeToOne,
+		Length: uint32(len(content)),
 	}
 	meta = &msg.Meta
 
 	sourceSize = 4
-	length = len(content)
+	length = int(meta.Length)
 
 	msg.buf = bytespool.Alloc(MetaSize + sourceSize + length)
 
@@ -271,11 +266,11 @@ func NewRawRecvMessage(pid uint32, content []byte) (msg *Message) {
 	msg.Source = msg.buf[from:to:to]
 	// update source, add current pipe id
 	binary.BigEndian.PutUint32(msg.Source, pid)
-	meta.Hops++
 	meta.TTL--
+	meta.Hops++
 
 	if content != nil {
-		// nil raw message is EOF
+		// nil raw message means EOF
 		from = to
 		to = from + length
 		msg.Content = msg.buf[from:to:to]
@@ -286,7 +281,7 @@ func NewRawRecvMessage(pid uint32, content []byte) (msg *Message) {
 }
 
 // NewSendMessage create a message to send
-func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, content []byte) *Message {
+func NewSendMessage(flags, sendType uint8, ttl uint8, src, dest MsgPath, content []byte) *Message {
 	var (
 		from, to   int
 		sourceSize int
@@ -294,7 +289,7 @@ func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, c
 		length     int
 	)
 
-	if ttl <= 0 {
+	if ttl == 0 {
 		ttl = DefaultMsgTTL
 	}
 	msg := msgPool.Get().(*Message)
@@ -309,9 +304,6 @@ func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, c
 	sourceSize = len(src)
 	destSize = len(dest)
 	length = len(content)
-	// if zero copy {
-	// 	length = 0
-	// }
 
 	msg.buf = bytespool.Alloc(MetaSize + sourceSize + destSize + length)
 	to = MetaSize
@@ -325,7 +317,7 @@ func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, c
 	}
 
 	// Destination
-	if msg.Meta.Distance > 0 {
+	if destSize > 0 {
 		from = to
 		to = from + destSize
 		msg.Destination = msg.buf[from:to:to]
@@ -333,14 +325,10 @@ func NewSendMessage(sendType uint8, src, dest MsgPath, flags uint8, ttl uint8, c
 	}
 
 	// Content
-	// if zero copy {
-	// 	msg.Content = content
-	// } else {
 	from = to
 	to = from + length
 	msg.Content = msg.buf[from:to:to]
 	copy(msg.Content, content)
-	// }
 
 	return msg
 }
@@ -383,9 +371,6 @@ func (msg *Message) Free() {
 	msg.Meta = emptyMeta
 	msg.Source = nil
 	msg.Destination = nil
-	// if zero copy {
-	// 	bytespool.Free(msg.Content)
-	// }
 	msg.Content = nil
 	msgPool.Put(msg)
 }

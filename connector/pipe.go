@@ -44,27 +44,30 @@ var (
 
 func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener, opts options.Options) *pipe {
 	p := &pipe{
-		Options:              opts,
-		Connection:           tc,
-		closeOnEOF:           Options.Pipe.CloseOnEOF.ValueFrom(opts),
-		raw:                  Options.Pipe.Raw.ValueFrom(opts),
-		maxRecvContentLength: Options.Pipe.MaxRecvContentLength.ValueFrom(opts),
+		Options:    opts,
+		Connection: tc,
+		closeOnEOF: Options.Pipe.CloseOnEOF.ValueFrom(opts),
+		raw:        Options.Pipe.Raw.ValueFrom(opts),
 
 		id:     pipeID.NextID(),
 		parent: parent,
 		d:      d,
 		l:      l,
-
-		// alloc
-		metaBuf: make([]byte, message.MetaSize),
 	}
-	p.sendMsgFunc = p.sendMsg
-	p.recvMsgFunc = p.recvMsg
 	if p.raw {
+		// funcs
 		p.sendMsgFunc = p.sendRawMsg
 		p.recvMsgFunc = p.recvRawMsg
 		// alloc
 		p.rawRecvBuf = make([]byte, Options.Pipe.RawRecvBufSize.ValueFrom(opts))
+	} else {
+		// options
+		p.maxRecvContentLength = Options.Pipe.MaxRecvContentLength.ValueFrom(opts)
+		// funcs
+		p.sendMsgFunc = p.sendMsg
+		p.recvMsgFunc = p.recvMsg
+		// alloc
+		p.metaBuf = make([]byte, message.MetaSize)
 	}
 
 	return p
@@ -137,6 +140,7 @@ func (p *pipe) SendMsg(msg *message.Message) (err error) {
 
 func (p *pipe) sendMsg(msg *message.Message) (err error) {
 	if msg.HasFlags(message.MsgFlagRaw) {
+		// TODO: remove check, guaranteed by user
 		// ignore raw messages. raw message is only for stream, forward raw message makes no sense,
 		// raw connection can not reply to message source.
 		return nil

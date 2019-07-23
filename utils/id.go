@@ -1,23 +1,24 @@
 package utils
 
 import (
-	"math/rand"
 	"sync"
-	"time"
 )
 
-// RecyclableIDGenerator generate recyclable unique ids.
-type RecyclableIDGenerator struct {
-	sync.Mutex
-	ids  map[uint32]struct{}
-	next uint32
-}
+type (
+	// RecyclableIDGenerator generate recyclable unique ids.
+	RecyclableIDGenerator struct {
+		sync.Mutex
+		ids  map[uint32]struct{}
+		next uint32
+	}
+)
 
 // NewRecyclableIDGenerator create an id generator
 func NewRecyclableIDGenerator() *RecyclableIDGenerator {
 	return &RecyclableIDGenerator{
 		ids:  make(map[uint32]struct{}),
-		next: uint32(rand.NewSource(time.Now().UnixNano()).Int63()),
+		next: 0,
+		// next: uint32(rand.NewSource(time.Now().UnixNano()).Int63()),
 	}
 }
 
@@ -26,8 +27,7 @@ func (g *RecyclableIDGenerator) NextID() (id uint32) {
 	g.Lock()
 	defer g.Unlock()
 	for {
-		// leave 1 high bits zero
-		id = g.next & 0x7fffffff
+		id = g.next
 		g.next++
 		if id == 0 {
 			continue

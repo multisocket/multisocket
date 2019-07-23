@@ -15,6 +15,7 @@ type (
 		options.Options
 
 		ConnectorAction
+		Connector() connector.Connector
 
 		RecvMsg() (*message.Message, error)
 		SendMsg(msg *message.Message) error                // for forward message

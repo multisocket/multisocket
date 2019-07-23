@@ -9,9 +9,9 @@ import (
 
 type (
 	socketOptions struct {
-		NoRecv           options.BoolOption
+		NoRecv           options.BoolOption // silently drop received messages
 		RecvQueueSize    options.Uint16Option
-		NoSend           options.BoolOption
+		NoSend           options.BoolOption // silently drop sended messages
 		SendQueueSize    options.Uint16Option
 		SendTTL          options.Uint8Option
 		SendBestEffort   options.BoolOption

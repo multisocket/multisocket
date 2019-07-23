@@ -13,13 +13,14 @@ import (
 
 type (
 	sender struct {
-		socket     *socket
+		socket *socket
+
+		noSend     bool
 		ttl        uint8
 		bestEffort bool
-
-		sendq   chan *message.Message
-		wg      *sync.WaitGroup
-		closetm *utils.Timer
+		sendq      chan *message.Message
+		wg         *sync.WaitGroup
+		closetm    *utils.Timer
 	}
 
 	pipeSender struct {
@@ -36,15 +37,20 @@ func newSender(socket *socket) *sender {
 		wg:      &sync.WaitGroup{},
 		closetm: utils.NewTimer(),
 	}
+	// init option values
+	s.onOptionChange(Options.NoSend, nil, nil)
 	s.onOptionChange(Options.SendQueueSize, nil, nil)
 	s.onOptionChange(Options.SendTTL, nil, nil)
 	s.onOptionChange(Options.SendBestEffort, nil, nil)
+
 	return s
 }
 
 // options
 func (s *sender) onOptionChange(opt options.Option, oldVal, newVal interface{}) error {
 	switch opt {
+	case Options.NoRecv:
+		s.noSend = s.socket.GetOptionDefault(Options.NoSend).(bool)
 	case Options.SendQueueSize:
 		s.sendq = make(chan *message.Message, s.sendQueueSize())
 	case Options.SendTTL:
@@ -233,20 +239,37 @@ func (s *sender) sendToAll(msg *message.Message) (err error) {
 }
 
 func (s *sender) Send(content []byte) (err error) {
-	return s.doPushMsg(message.NewSendMessage(message.SendTypeToOne, nil, nil, 0, s.ttl, content), s.sendq)
+	if s.noSend {
+		return nil
+	}
+	return s.doPushMsg(message.NewSendMessage(0, message.SendTypeToOne, s.ttl, nil, nil, content), s.sendq)
 }
 
 func (s *sender) SendTo(dest message.MsgPath, content []byte) (err error) {
-	return s.sendTo(message.NewSendMessage(message.SendTypeToDest, nil, dest, 0, s.ttl, content))
+	if s.noSend {
+		return nil
+	}
+	return s.sendTo(message.NewSendMessage(0, message.SendTypeToDest, s.ttl, nil, dest, content))
 }
 
 func (s *sender) SendAll(content []byte) (err error) {
-	return s.sendToAll(message.NewSendMessage(message.SendTypeToAll, nil, nil, 0, s.ttl, content))
+	if s.noSend {
+		return nil
+	}
+
+	return s.sendToAll(message.NewSendMessage(0, message.SendTypeToAll, s.ttl, nil, nil, content))
 }
 
 func (s *sender) SendMsg(msg *message.Message) error {
+	if s.noSend {
+		// drop msg
+		msg.FreeAll()
+		return nil
+	}
+
 	if msg.TTL == 0 {
 		// drop msg
+		msg.FreeAll()
 		return nil
 	}
 	switch msg.SendType() {

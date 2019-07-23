@@ -47,9 +47,10 @@ func New(ovs options.OptionValues) Socket {
 	}
 	s.connector = connector.NewWithOptions(s.Options)
 	s.ConnectorAction = s.connector
+	s.sender = newSender(s)
+	// init option values
 	s.onOptionChange(Options.NoRecv, nil, nil)
 	s.onOptionChange(Options.RecvQueueSize, nil, nil)
-	s.onOptionChange(Options.NoSend, nil, nil)
 
 	s.Options.AddOptionChangeHook(s.onOptionChange)
 
@@ -67,16 +68,8 @@ func (s *socket) onOptionChange(opt options.Option, oldVal, newVal interface{}) 
 		s.noRecv = s.GetOptionDefault(Options.NoRecv).(bool)
 	case Options.RecvQueueSize:
 		s.recvq = make(chan *message.Message, s.recvQueueSize())
-	case Options.NoSend:
-		if s.GetOptionDefault(Options.NoSend).(bool) {
-			s.sender = nil
-		} else {
-			s.sender = newSender(s)
-		}
 	default:
-		if s.sender != nil {
-			return s.sender.onOptionChange(opt, oldVal, newVal)
-		}
+		return s.sender.onOptionChange(opt, oldVal, newVal)
 	}
 	return nil
 }
@@ -99,10 +92,8 @@ func (s *socket) addPipe(cp connector.Pipe) {
 	p := &pipe{Pipe: cp}
 	s.pipes[p.ID()] = p
 	go s.receiver(p)
-	if s.sender != nil {
-		s.sender.initPipe(p)
-		go s.sender.run(p)
-	}
+	s.sender.initPipe(p)
+	go s.sender.run(p)
 	s.Unlock()
 }
 
@@ -191,6 +182,12 @@ RECVING:
 			WithFields(log.Fields{"id": p.ID(), "raw": p.IsRaw()}).
 			Debug("receiver stopped run")
 	}
+}
+
+// connector
+
+func (s *socket) Connector() connector.Connector {
+	return s.connector
 }
 
 func (s *socket) Close() error {
