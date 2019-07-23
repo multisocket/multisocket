@@ -215,7 +215,8 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, metaBuf []byte, maxLength
 			return
 		}
 		meta.Distance--
-	} else if destSize > 0 {
+	}
+	if destSize > 0 {
 		from = to
 		to = from + destSize
 		msg.Destination = msg.buf[from:to:to]

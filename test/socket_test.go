@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -29,6 +30,23 @@ func TestSocketSendRecv(t *testing.T) {
 				t.Run(tp.name, func(t *testing.T) {
 					addr := tp.addr
 					testSocketSendRecv(t, addr, sz)
+				})
+			}
+		})
+	}
+}
+
+func TestSocketSwitch(t *testing.T) {
+	hopsCases := []uint8{1, 2, 4, 8, 16, 17, 18, 32}
+
+	for idx := range hopsCases {
+		hops := hopsCases[idx]
+		t.Run(fmt.Sprintf("Hops(%d)", hops), func(t *testing.T) {
+			for idx := range transports {
+				tp := transports[idx]
+				t.Run(tp.name, func(t *testing.T) {
+					addr := tp.addr
+					testSocketSwitch(t, addr, hops)
 				})
 			}
 		})
@@ -127,6 +145,95 @@ func testSocketSendRecv(t *testing.T, addr string, sz int) {
 			t.Errorf("send/recv not equal: randSeed=%d, i=%d, len=%d/%d", randSeed, i, len(content), len(msg.Content))
 		}
 		msg.FreeAll()
+	}
+}
+
+func testSocketSwitch(t *testing.T, addr string, hops uint8) {
+	var (
+		err     error
+		srvsock multisocket.Socket
+		swBack  multisocket.Socket
+		clisock multisocket.Socket
+	)
+	sendTTL := uint8(16)
+
+	if srvsock, swBack, err = prepareSocks(addr); err != nil {
+		t.Errorf("connect error: %s", err)
+	}
+	srvsock.SetOption(multisocket.Options.SendTTL, sendTTL)
+	defer srvsock.Close()
+	defer swBack.Close()
+
+	// switches
+	// srvsock<-|swBack,swFront|<-...-|swBack,swFront|<-clisock
+	for i := 1; i < int(hops); i++ {
+		swFront, _swBack, err := prepareSocks(fmt.Sprintf("inproc://switch_%d", i))
+		if err != nil {
+			t.Errorf("connect error: %s", err)
+		}
+		defer swFront.Close()
+		defer _swBack.Close()
+		multisocket.StartSwitch(swBack, swFront, nil)
+		swBack = _swBack
+	}
+	clisock = swBack
+
+	msgCount := 0
+	done := make(chan struct{})
+	go func() {
+		var (
+			err error
+			msg *message.Message
+		)
+		for {
+			if msg, err = srvsock.RecvMsg(); err != nil {
+				if err != errs.ErrClosed {
+					t.Errorf("RecvMsg error: %s", err)
+				}
+				break
+			}
+			if msg.Hops != hops {
+				t.Errorf("Server RecvMsg Hops(%d) != %d", msg.Hops, hops)
+			}
+
+			if string(msg.Content) == "done" {
+				// done
+				break
+			}
+
+			if msg.TTL+msg.Hops != sendTTL {
+				t.Errorf("Server RecvMsg TTL(%d)+Hops(%d) != SendTTL(%d)", msg.TTL, msg.Hops, sendTTL)
+			}
+
+			if err = srvsock.SendTo(msg.Source, msg.Content); err != nil {
+				t.Errorf("SendTo error: %s", err)
+			}
+			msg.FreeAll()
+			msgCount++
+		}
+		done <- struct{}{}
+	}()
+
+	var (
+		content = []byte("Switch Test")
+	)
+	for i := 0; i < 100; i++ {
+		if err = clisock.Send(content); err != nil {
+			t.Errorf("Send error: %s", err)
+		}
+	}
+	if err = clisock.SendMsg(message.NewSendMessage(0, message.SendTypeToOne, 128, nil, nil, []byte("done"))); err != nil {
+		t.Errorf("Send error: %s", err)
+	}
+	<-done
+	if hops > sendTTL {
+		if msgCount != 0 {
+			t.Errorf("%d messages ingore TTL(%d/%d)", msgCount, hops, sendTTL)
+		}
+	} else {
+		if msgCount != 100 {
+			t.Errorf("%d messages ingore TTL(%d/%d)", 100-msgCount, hops, sendTTL)
+		}
 	}
 }
 
