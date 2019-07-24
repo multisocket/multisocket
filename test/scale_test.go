@@ -1,3 +1,5 @@
+// +build scale
+
 package test
 
 // This simple test just fires off a crapton of inproc clients, to see

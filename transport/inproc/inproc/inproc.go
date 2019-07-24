@@ -7,5 +7,5 @@ import (
 
 func init() {
 	// as default inproc transport
-	transport.RegisterTransportWithScheme(channel.Transport, "inproc")
+	transport.RegisterTransportWithScheme(channel.MsrTransport, "inproc")
 }

@@ -7,16 +7,49 @@ import (
 )
 
 type (
+	// MsgSender send messages
+	MsgSender interface {
+		SendMsg(msg *message.Message) (err error)
+	}
+
+	// MsgReceiver receive messages
+	MsgReceiver interface {
+		RecvMsg() (msg *message.Message, err error)
+	}
+
+	// MsgSendReceiver send and receive messages
+	MsgSendReceiver interface {
+		MsgSender
+		MsgReceiver
+	}
+
+	// Sender send packet
+	Sender interface {
+		Send(b []byte) (err error)
+	}
+
+	// Receiver receive packet
+	Receiver interface {
+		Recv() (b []byte, err error)
+	}
+
+	// SendReceiver send and receive packet
+	SendReceiver interface {
+		Sender
+		Receiver
+	}
+
 	// Pipe is a connection between two peers.
 	Pipe interface {
 		options.ReadOnlyOptions
 
 		ID() uint32
 		IsRaw() bool
+		MsgFreeLevel() message.FreeLevel
 
 		transport.Connection
-		SendMsg(msg *message.Message) (err error)
-		RecvMsg() (msg *message.Message, err error)
+
+		MsgSendReceiver
 	}
 )
 

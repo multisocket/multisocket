@@ -2,6 +2,7 @@ package connector
 
 import (
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/multisocket/multisocket/message"
@@ -25,9 +26,13 @@ type pipe struct {
 	d                    *dialer
 	l                    *listener
 
+	sr  SendReceiver
+	msr MsgSendReceiver
 	// funcs
 	recvMsgFunc func() (msg *message.Message, err error)
 	sendMsgFunc func(msg *message.Message) (err error)
+
+	msgFreeLevel message.FreeLevel
 
 	// for read message meta data
 	metaBuf []byte
@@ -54,20 +59,52 @@ func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener,
 		d:      d,
 		l:      l,
 	}
+	p.msgFreeLevel = message.FreeAll
 	if p.raw {
-		// funcs
-		p.sendMsgFunc = p.sendRawMsg
-		p.recvMsgFunc = p.recvRawMsg
-		// alloc
-		p.rawRecvBuf = make([]byte, Options.Pipe.RawRecvBufSize.ValueFrom(opts))
+		if sr, ok := tc.RawConn().(SendReceiver); ok {
+			p.sr = sr
+			// funcs
+			p.sendMsgFunc = p.sendBlockRawMsg
+			p.recvMsgFunc = p.recvBlockRawMsg
+		} else {
+			// funcs
+			p.sendMsgFunc = p.sendRawMsg
+			p.recvMsgFunc = p.recvRawMsg
+			// alloc
+			p.rawRecvBuf = make([]byte, Options.Pipe.RawRecvBufSize.ValueFrom(opts))
+		}
+		if strings.HasPrefix(tc.Transport().Scheme(), "inproc.channel") {
+			p.msgFreeLevel = message.FreeMsg
+		}
 	} else {
 		// options
 		p.maxRecvContentLength = Options.Pipe.MaxRecvContentLength.ValueFrom(opts)
-		// funcs
-		p.sendMsgFunc = p.sendMsg
-		p.recvMsgFunc = p.recvMsg
-		// alloc
-		p.metaBuf = make([]byte, message.MetaSize)
+		if msr, ok := tc.RawConn().(MsgSendReceiver); ok {
+			p.msr = msr
+			// funcs
+			p.sendMsgFunc = msr.SendMsg
+			p.recvMsgFunc = p.recvDirectMsg
+
+			if strings.HasPrefix(tc.Transport().Scheme(), "inproc.channel") {
+				p.msgFreeLevel = message.FreeNone
+			}
+		} else {
+			if sr, ok := tc.RawConn().(SendReceiver); ok {
+				p.sr = sr
+				// funcs
+				p.sendMsgFunc = p.sendBlockMsg
+				p.recvMsgFunc = p.recvBlockMsg
+			} else {
+				// funcs
+				p.sendMsgFunc = p.sendMsg
+				p.recvMsgFunc = p.recvMsg
+				// alloc
+				p.metaBuf = make([]byte, message.MetaSize)
+			}
+			if strings.HasPrefix(tc.Transport().Scheme(), "inproc.channel") {
+				p.msgFreeLevel = message.FreeMsg
+			}
+		}
 	}
 
 	return p
@@ -79,6 +116,10 @@ func (p *pipe) ID() uint32 {
 
 func (p *pipe) IsRaw() bool {
 	return p.raw
+}
+
+func (p *pipe) MsgFreeLevel() message.FreeLevel {
+	return p.msgFreeLevel
 }
 
 func (p *pipe) Close() error {
@@ -116,8 +157,35 @@ func (p *pipe) Read(b []byte) (n int, err error) {
 	return
 }
 
+func (p *pipe) recv() (b []byte, err error) {
+	if b, err = p.sr.Recv(); err != nil {
+		if err == io.EOF {
+			if len(b) > 0 {
+				err = nil
+			} else if p.closeOnEOF {
+				p.Close()
+				err = errs.ErrClosed
+			}
+		} else {
+			if errx := p.Close(); errx != nil {
+				err = errx
+			}
+		}
+	}
+	return
+}
+
 func (p *pipe) Write(b []byte) (n int, err error) {
 	if n, err = p.Connection.Write(b); err != nil {
+		if errx := p.Close(); errx != nil {
+			err = errx
+		}
+	}
+	return
+}
+
+func (p *pipe) send(b []byte) (err error) {
+	if err = p.sr.Send(b); err != nil {
 		if errx := p.Close(); errx != nil {
 			err = errx
 		}
@@ -154,6 +222,17 @@ func (p *pipe) sendMsg(msg *message.Message) (err error) {
 	return
 }
 
+func (p *pipe) sendBlockMsg(msg *message.Message) (err error) {
+	if msg.HasFlags(message.MsgFlagRaw) {
+		// TODO: remove check, guaranteed by user
+		// ignore raw messages. raw message is only for stream, forward raw message makes no sense,
+		// raw connection can not reply to message source.
+		return nil
+	}
+
+	return p.send(msg.Encode())
+}
+
 func (p *pipe) sendRawMsg(msg *message.Message) (err error) {
 	if msg.HasAnyFlags() {
 		// ignore none normal messages.
@@ -164,12 +243,29 @@ func (p *pipe) sendRawMsg(msg *message.Message) (err error) {
 	return
 }
 
+func (p *pipe) sendBlockRawMsg(msg *message.Message) (err error) {
+	if msg.HasAnyFlags() {
+		// ignore none normal messages.
+		return
+	}
+
+	return p.send(msg.Content)
+}
+
 func (p *pipe) RecvMsg() (msg *message.Message, err error) {
 	return p.recvMsgFunc()
 }
 
 func (p *pipe) recvMsg() (msg *message.Message, err error) {
 	return message.NewMessageFromReader(p.id, p, p.metaBuf, p.maxRecvContentLength)
+}
+
+func (p *pipe) recvBlockMsg() (msg *message.Message, err error) {
+	var buf []byte
+	if buf, err = p.recv(); err != nil {
+		return
+	}
+	return message.NewMessageFromBytes(p.id, buf, p.maxRecvContentLength)
 }
 
 func (p *pipe) recvRawMsg() (msg *message.Message, err error) {
@@ -183,4 +279,25 @@ func (p *pipe) recvRawMsg() (msg *message.Message, err error) {
 		msg = message.NewRawRecvMessage(p.id, p.rawRecvBuf[:n])
 	}
 	return
+}
+
+func (p *pipe) recvBlockRawMsg() (msg *message.Message, err error) {
+	var buf []byte
+	if buf, err = p.recv(); err != nil {
+		if err == io.EOF {
+			// use nil represents EOF
+			msg = message.NewRawRecvMessage(p.id, nil)
+		}
+	} else {
+		msg = message.NewRawRecvMessage(p.id, buf)
+	}
+	return
+}
+
+func (p *pipe) recvDirectMsg() (msg *message.Message, err error) {
+	var srcMsg *message.Message
+	if srcMsg, err = p.msr.RecvMsg(); err != nil {
+		return
+	}
+	return message.NewMessageFromMsg(p.id, srcMsg, p.maxRecvContentLength)
 }

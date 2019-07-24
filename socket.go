@@ -39,16 +39,27 @@ type (
 	pipe struct {
 		connector.Pipe
 		// send
-		stopq chan struct{}
-		sendq chan *message.Message
-		// TODO: use a better way to support inproc.channel like transport: free payload internal
-		freeAll bool
+		stopq     chan struct{}
+		sendq     chan *message.Message
+		freeLevel message.FreeLevel
 	}
 )
 
 var (
 	emptyByteSlice = make([]byte, 0)
 )
+
+// NewNoSend create a no send Socket
+func NewNoSend(ovs options.OptionValues) Socket {
+	ovs[Options.NoSend] = true
+	return New(ovs)
+}
+
+// NewNoRecv create a no recv Socket
+func NewNoRecv(ovs options.OptionValues) Socket {
+	ovs[Options.NoRecv] = true
+	return New(ovs)
+}
 
 // New creates a Socket
 func New(ovs options.OptionValues) Socket {
@@ -133,9 +144,9 @@ func (s *socket) newPipe(cp connector.Pipe) *pipe {
 	return &pipe{
 		Pipe: cp,
 		// send
-		stopq:   make(chan struct{}),
-		sendq:   make(chan *message.Message, s.sendQueueSize()),
-		freeAll: cp.Transport().Scheme() != "inproc.channel",
+		stopq:     make(chan struct{}),
+		sendq:     make(chan *message.Message, s.sendQueueSize()),
+		freeLevel: cp.MsgFreeLevel(),
 	}
 }
 
@@ -317,12 +328,7 @@ func (s *socket) doSendMsg(p *pipe, msg *message.Message) (err error) {
 		msg.FreeAll()
 		return
 	}
-	if p.freeAll {
-		// free all
-		msg.FreeAll()
-	} else {
-		msg.Free()
-	}
+	msg.FreeByLevel(p.freeLevel)
 	return
 }
 

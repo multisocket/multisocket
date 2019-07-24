@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,15 +16,21 @@ import (
 )
 
 type (
-	wsTran string
+	wsTran struct {
+		scheme string
+		isSr   bool
+		isRw   bool
+	}
 
 	dialer struct {
+		t    *wsTran
 		addr string
 		url  *url.URL
 	}
 
 	// Listener websocket listener, exported for add handler or self serving
 	Listener struct {
+		t        *wsTran
 		addr     string
 		URL      *url.URL
 		upgrader websocket.Upgrader
@@ -31,7 +38,7 @@ type (
 		externalListen bool
 		htsvr          *http.Server
 		listener       net.Listener
-		pending        chan *wsConn
+		pending        chan net.Conn
 		sync.Mutex
 		closedq chan struct{}
 	}
@@ -45,15 +52,20 @@ type (
 		dtype int
 	}
 
-	address string
+	// SendReceiver
+	srWsConn struct {
+		*wsConn
+	}
 
 	// CheckOriginFunc check request origin
 	CheckOriginFunc func(r *http.Request) bool
 )
 
-const (
-	// Transport is a transport.Transport for Websocket.
-	Transport = wsTran("ws")
+var (
+	// RwTransport is a transport.Transport for Websocket, using ReadWriter.
+	RwTransport = &wsTran{scheme: "ws.rw", isRw: true}
+	// SrTransport is a transport.Transport for Websocket, using SendReceiver+ReadWriter.
+	SrTransport = &wsTran{scheme: "ws.sr", isSr: true}
 )
 
 var (
@@ -65,20 +77,14 @@ var (
 )
 
 func init() {
-	transport.RegisterTransport(Transport)
+	transport.RegisterTransport(RwTransport)
+	transport.RegisterTransport(SrTransport)
+	// default transport
+	transport.RegisterTransportWithScheme(SrTransport, "ws")
 }
 
 func noCheckOrigin(r *http.Request) bool {
 	return true
-}
-
-// address
-func (a address) Network() string {
-	return string(Transport)
-}
-
-func (a address) String() string {
-	return string(a)
 }
 
 // ws
@@ -89,6 +95,19 @@ func (c *wsConn) LocalAddr() net.Addr {
 func (c *wsConn) RemoteAddr() net.Addr {
 	return c.raddr
 }
+
+// SendReceiver
+
+func (c *srWsConn) Send(b []byte) (err error) {
+	return c.Conn.WriteMessage(c.dtype, b)
+}
+
+func (c *srWsConn) Recv() (b []byte, err error) {
+	_, b, err = c.Conn.ReadMessage()
+	return
+}
+
+// ReadWriter
 
 func (c *wsConn) Read(b []byte) (n int, err error) {
 	if c.r == nil {
@@ -124,7 +143,6 @@ func (c *wsConn) SetDeadline(t time.Time) (err error) {
 
 func (d *dialer) Dial(opts options.Options) (_ transport.Connection, err error) {
 	var (
-		c  *wsConn
 		ws *websocket.Conn
 	)
 
@@ -151,15 +169,20 @@ func (d *dialer) Dial(opts options.Options) (_ transport.Connection, err error) 
 		return
 	}
 
-	c = &wsConn{
+	c := &wsConn{
 		Conn:  ws,
 		url:   d.url,
 		laddr: ws.LocalAddr(),
-		raddr: address(d.addr),
+		raddr: transport.NewAddress(d.t.scheme, d.addr),
 		dtype: dtype,
 	}
 
-	return transport.NewConnection(Transport, c, false)
+	var conn net.Conn = c
+	if d.t.isSr {
+		conn = &srWsConn{wsConn: c}
+	}
+
+	return transport.NewConnection(RwTransport, conn, false)
 }
 
 // listener
@@ -172,7 +195,7 @@ func (l *Listener) Listen(opts options.Options) (err error) {
 	default:
 	}
 
-	l.pending = make(chan *wsConn, Options.Listener.PendingSize.ValueFrom(opts))
+	l.pending = make(chan net.Conn, Options.Listener.PendingSize.ValueFrom(opts))
 	// config
 	if val, ok := opts.GetOption(Options.ReadBufferSize); ok {
 		l.upgrader.ReadBufferSize = Options.ReadBufferSize.Value(val)
@@ -221,7 +244,7 @@ func (l *Listener) Accept(opts options.Options) (transport.Connection, error) {
 
 	select {
 	case c := <-l.pending:
-		return transport.NewConnection(Transport, c, true)
+		return transport.NewConnection(RwTransport, c, true)
 	case <-l.closedq:
 		return nil, errs.ErrClosed
 	}
@@ -277,19 +300,23 @@ func (l *Listener) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	c := &wsConn{
 		Conn:  ws,
 		url:   l.URL,
-		laddr: address(l.addr),
+		laddr: transport.NewAddress(l.t.scheme, l.addr),
 		raddr: ws.RemoteAddr(),
 		dtype: dtype,
 	}
 
-	l.pending <- c
+	if l.t.isSr {
+		l.pending <- &srWsConn{wsConn: c}
+	} else {
+		l.pending <- c
+	}
 }
 
-func (t wsTran) Scheme() string {
-	return string(t)
+func (t *wsTran) Scheme() string {
+	return t.scheme
 }
 
-func (t wsTran) NewDialer(address string) (transport.Dialer, error) {
+func (t *wsTran) NewDialer(address string) (transport.Dialer, error) {
 	var (
 		err  error
 		url  *url.URL
@@ -298,15 +325,22 @@ func (t wsTran) NewDialer(address string) (transport.Dialer, error) {
 	if url, addr, err = parseAddressToURL(t, address); err != nil {
 		return nil, err
 	}
+	// NOTE:
+	if t.isSr {
+		url.Scheme = strings.TrimSuffix(url.Scheme, ".sr")
+	} else if t.isRw {
+		url.Scheme = strings.TrimSuffix(url.Scheme, ".rw")
+	}
 
 	d := &dialer{
+		t:    t,
 		addr: addr,
 		url:  url,
 	}
 	return d, nil
 }
 
-func (t wsTran) NewListener(address string) (transport.Listener, error) {
+func (t *wsTran) NewListener(address string) (transport.Listener, error) {
 	var (
 		err  error
 		url  *url.URL
@@ -318,8 +352,15 @@ func (t wsTran) NewListener(address string) (transport.Listener, error) {
 	if url.Path == "" {
 		url.Path = "/"
 	}
+	// NOTE:
+	if t.isSr {
+		url.Scheme = strings.TrimSuffix(url.Scheme, ".sr")
+	} else if t.isRw {
+		url.Scheme = strings.TrimSuffix(url.Scheme, ".rw")
+	}
 
 	l := &Listener{
+		t:    t,
 		addr: addr,
 		URL:  url,
 		upgrader: websocket.Upgrader{

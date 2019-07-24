@@ -14,6 +14,7 @@ type (
 		Writev(v ...[]byte) (int64, error)
 		LocalAddress() string
 		RemoteAddress() string
+		RawConn() net.Conn
 	}
 
 	// Dialer is dialer
@@ -34,4 +35,25 @@ type (
 		NewDialer(address string) (Dialer, error)
 		NewListener(address string) (Listener, error)
 	}
+
+	// Address is transport Connection's address as net.Addr
+	Address struct {
+		scheme string
+		addr   string
+	}
 )
+
+// NewAddress create an address
+func NewAddress(scheme, addr string) *Address{
+	return &Address{scheme,addr}
+}
+
+// Network address's network
+func (a *Address) Network() string {
+	return a.scheme
+}
+
+// Network address's value
+func (a *Address) String() string {
+	return a.addr
+}

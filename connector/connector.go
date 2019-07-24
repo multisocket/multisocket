@@ -14,7 +14,7 @@ type (
 	connector struct {
 		options.Options
 
-		sync.Mutex
+		sync.RWMutex
 		negotiator       Negotiator
 		limit            int
 		dialers          map[*dialer]struct{} // can dial to any address any times
@@ -338,9 +338,9 @@ func (c *connector) StopListen(addr string) {
 }
 
 func (c *connector) GetPipe(id uint32) Pipe {
-	c.Lock()
+	c.RLock()
 	p := c.pipes[id]
-	c.Unlock()
+	c.RUnlock()
 	if p == nil {
 		return nil
 	}
@@ -348,7 +348,9 @@ func (c *connector) GetPipe(id uint32) Pipe {
 }
 
 func (c *connector) ClosePipe(id uint32) {
-	p := c.GetPipe(id)
+	c.RLock()
+	p := c.pipes[id]
+	c.RUnlock()
 	if p != nil {
 		p.Close()
 	}

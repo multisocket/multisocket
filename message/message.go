@@ -6,9 +6,8 @@ import (
 	"io/ioutil"
 	"sync"
 
-	"github.com/multisocket/multisocket/errs"
-
 	"github.com/multisocket/multisocket/bytespool"
+	"github.com/multisocket/multisocket/errs"
 )
 
 type (
@@ -127,16 +126,12 @@ func (m *Meta) encodeTo(b []byte) []byte {
 }
 
 // decodeMetaFrom reader
-func decodeMetaFrom(r io.Reader, a []byte, m *Meta) (err error) {
-	if _, err = io.ReadFull(r, a); err != nil {
-		return
-	}
+func decodeMetaFrom(a []byte, m *Meta) {
 	m.Flags = a[0]
 	m.TTL = a[1]
 	m.Hops = a[2]
 	m.Distance = a[3]
 	m.Length = binary.BigEndian.Uint32(a[4:])
-	return nil
 }
 
 // Length get Path length
@@ -156,6 +151,146 @@ func (path MsgPath) NextID() (id uint32, source MsgPath) {
 	return
 }
 
+// NewMessageFromMsg create a message from message
+func NewMessageFromMsg(pid uint32, srcMsg *Message, maxLength uint32) (msg *Message, err error) {
+	var (
+		meta       *Meta
+		from, to   int
+		sentType   uint8
+		sourceSize int
+		destSize   int
+		length     int
+	)
+	msg = msgPool.Get().(*Message)
+	msg.Meta = srcMsg.Meta
+	meta = &msg.Meta
+
+	if maxLength != 0 && meta.Length > maxLength {
+		msg.Free()
+		msg = nil
+		err = errs.ErrContentTooLong
+		return
+	}
+
+	sentType = meta.SendType()
+	sourceSize = 4 * int(meta.Hops+1)
+	if sentType == SendTypeToDest {
+		destSize = 4 * int(meta.Distance-1)
+	} else {
+		destSize = 4 * int(meta.Distance)
+	}
+	length = int(meta.Length)
+	msg.buf = bytespool.Alloc(MetaSize + sourceSize + destSize + length)
+	// Source
+	from = MetaSize
+	to = from + sourceSize
+	msg.Source = msg.buf[from:to:to]
+	copy(msg.Source[4:sourceSize], srcMsg.Source)
+	// update source, add current pipe id
+	binary.BigEndian.PutUint32(msg.Source[:4], pid)
+	meta.TTL--
+	meta.Hops++
+
+	// Destination
+	if sentType == SendTypeToDest {
+		// previous node's sender's pipe id
+		meta.Distance--
+	}
+	if destSize > 0 {
+		from = to
+		to = from + destSize
+		msg.Destination = msg.buf[from:to:to]
+		copy(msg.Destination, msg.Destination[4:])
+	}
+
+	// Content
+	from = to
+	to = from + length
+	msg.Content = msg.buf[from:to:to]
+	copy(msg.Content, srcMsg.Content)
+
+	return
+}
+
+// NewMessageFromBytes create a message from bytes
+func NewMessageFromBytes(pid uint32, buf []byte, maxLength uint32) (msg *Message, err error) {
+	var (
+		meta       *Meta
+		from, to   int
+		sentType   uint8
+		sourceSize int
+		destSize   int
+		length     int
+	)
+	msg = msgPool.Get().(*Message)
+	meta = &msg.Meta
+
+	if len(buf) < MetaSize {
+		msg.Free()
+		msg = nil
+		err = errs.ErrBadMsg
+		return
+	}
+	decodeMetaFrom(buf, meta)
+	buf = buf[MetaSize:]
+
+	if maxLength != 0 && meta.Length > maxLength {
+		msg.Free()
+		msg = nil
+		err = errs.ErrContentTooLong
+		return
+	}
+
+	if len(buf) != 4*int(meta.Hops+meta.Distance)+int(meta.Length) {
+		msg.Free()
+		msg = nil
+		err = errs.ErrBadMsg
+		return
+	}
+
+	sentType = meta.SendType()
+	sourceSize = 4 * int(meta.Hops+1)
+	if sentType == SendTypeToDest {
+		destSize = 4 * int(meta.Distance-1)
+	} else {
+		destSize = 4 * int(meta.Distance)
+	}
+	length = int(meta.Length)
+	msg.buf = bytespool.Alloc(MetaSize + sourceSize + destSize + length)
+	// Source
+	from = MetaSize
+	to = from + sourceSize
+	msg.Source = msg.buf[from:to:to]
+	copy(msg.Source[4:sourceSize], buf)
+	buf = buf[sourceSize-4:]
+	// update source, add current pipe id
+	binary.BigEndian.PutUint32(msg.Source[:4], pid)
+	meta.TTL--
+	meta.Hops++
+
+	// Destination
+	if sentType == SendTypeToDest {
+		// previous node's sender's pipe id
+		buf = buf[4:]
+		meta.Distance--
+	}
+	if destSize > 0 {
+		from = to
+		to = from + destSize
+		msg.Destination = msg.buf[from:to:to]
+		copy(msg.Destination, buf)
+		buf = buf[destSize:]
+	}
+
+	// Content
+	from = to
+	to = from + length
+	msg.Content = msg.buf[from:to:to]
+	copy(msg.Content, buf)
+
+	return
+}
+
 // NewMessageFromReader create a message from reader
 func NewMessageFromReader(pid uint32, r io.ReadCloser, metaBuf []byte, maxLength uint32) (msg *Message, err error) {
 	var (
@@ -169,14 +304,16 @@ func NewMessageFromReader(pid uint32, r io.ReadCloser, metaBuf []byte, maxLength
 	msg = msgPool.Get().(*Message)
 	meta = &msg.Meta
 
-	if err = decodeMetaFrom(r, metaBuf, meta); err != nil {
-		msg.FreeAll()
+	if _, err = io.ReadFull(r, metaBuf); err != nil {
+		msg.Free()
 		msg = nil
 		// err = errs.ErrBadMsg
 		return
 	}
+	decodeMetaFrom(metaBuf, meta)
+
 	if maxLength != 0 && meta.Length > maxLength {
-		msg.FreeAll()
+		msg.Free()
 		msg = nil
 		r.Close()
 		err = errs.ErrContentTooLong
@@ -352,11 +489,39 @@ func (msg *Message) Dup() (dup *Message) {
 	destSize := 4 * int(dup.Meta.Distance)
 	length := int(dup.Meta.Length)
 
-	dup.Source = dup.buf[:sourceSize:sourceSize]
-	dup.Destination = dup.buf[sourceSize : sourceSize+destSize : sourceSize+destSize]
-	dup.Content = dup.buf[sourceSize+destSize : sourceSize+destSize+length : sourceSize+destSize+length]
+	from, to := MetaSize, MetaSize+sourceSize
+	dup.Source = dup.buf[from:to:to]
+
+	from, to = to, to+destSize
+	dup.Destination = dup.buf[from:to:to]
+
+	from, to = to, to+length
+	dup.Content = dup.buf[from:to:to]
 
 	return dup
+}
+
+// FreeLevel defines how to free messages
+type FreeLevel int
+
+// msg free levels
+const (
+	// FreeAll free all
+	FreeAll FreeLevel = iota
+	// FreeMsg free msg
+	FreeMsg
+	// FreeNone free nothing
+	FreeNone
+)
+
+// FreeByLevel free message by level
+func (msg *Message) FreeByLevel(level FreeLevel) {
+	switch level {
+	case FreeAll:
+		msg.FreeAll()
+	case FreeMsg:
+		msg.Free()
+	}
 }
 
 // FreeAll put buf and msg to pools

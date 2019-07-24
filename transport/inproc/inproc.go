@@ -19,7 +19,7 @@ type (
 	}
 
 	// NewPipeFunc create a pipe
-	NewPipeFunc func(opts options.Options) (net.Conn, net.Conn)
+	NewPipeFunc func(laddr, raddr net.Addr, opts options.Options) (net.Conn, net.Conn)
 	// Tran is inproc transport
 	Tran struct {
 		name      string
@@ -36,21 +36,9 @@ type (
 		t             *Tran
 		acceptedCount uint64
 		addr          string
-		accepts       chan chan *inprocConn
+		accepts       chan chan net.Conn
 		sync.Mutex
 		closedq chan struct{}
-	}
-
-	// inprocConn implements PrimitiveConnection based on io.Pipe
-	inprocConn struct {
-		laddr *address
-		raddr *address
-		net.Conn
-	}
-
-	address struct {
-		scheme string
-		addr   string
 	}
 )
 
@@ -69,26 +57,6 @@ func NewTransport(name string, newPipe NewPipeFunc) *Tran {
 	}
 }
 
-// address
-
-func (a *address) Network() string {
-	return a.scheme
-}
-
-func (a *address) String() string {
-	return a.addr
-}
-
-// inproc
-
-func (p *inprocConn) LocalAddr() net.Addr {
-	return p.laddr
-}
-
-func (p *inprocConn) RemoteAddr() net.Addr {
-	return p.raddr
-}
-
 // dialer
 
 func (d *dialer) Dial(opts options.Options) (transport.Connection, error) {
@@ -101,7 +69,7 @@ func (d *dialer) Dial(opts options.Options) (transport.Connection, error) {
 		return nil, transport.ErrConnRefused
 	}
 
-	ac := make(chan *inprocConn)
+	ac := make(chan net.Conn)
 	select {
 	case <-l.closedq:
 		return nil, transport.ErrConnRefused
@@ -128,7 +96,7 @@ func (l *listener) Listen(opts options.Options) error {
 	if ok, err := l.t.addListener(l); !ok {
 		return err
 	}
-	l.accepts = make(chan chan *inprocConn, defaultAcceptQueueSize)
+	l.accepts = make(chan chan net.Conn, defaultAcceptQueueSize)
 
 	return nil
 }
@@ -144,25 +112,15 @@ func (l *listener) Accept(opts options.Options) (transport.Connection, error) {
 		return nil, errs.ErrClosed
 	case ac := <-l.accepts:
 		l.acceptedCount++
-		lconn, rconn := l.t.newPipe(opts)
-		// setup accept conn
-		lc := &inprocConn{
-			laddr: &address{l.t.name, l.addr},
-			raddr: &address{l.t.name, fmt.Sprintf("%s.dialer#%d", l.addr, l.acceptedCount)},
-			Conn:  lconn,
-		}
-		// setup dialer conn
-		dc := &inprocConn{
-			laddr: lc.raddr,
-			raddr: lc.laddr,
-			Conn:  rconn,
-		}
+		laddr := transport.NewAddress(l.t.name, l.addr)
+		raddr := transport.NewAddress(l.t.name, fmt.Sprintf("%s.dialer#%d", l.addr, l.acceptedCount))
+		lc, rc := l.t.newPipe(laddr, raddr, opts)
 
 		// notify dialer
 		select {
 		case <-l.closedq:
 			return nil, errs.ErrClosed
-		case ac <- dc:
+		case ac <- rc:
 		}
 
 		return transport.NewConnection(l.t, lc, true)

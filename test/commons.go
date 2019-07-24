@@ -14,12 +14,18 @@ var (
 		name string
 		addr string
 	}{
+		{"inproc", "inproc://benchmark_test"},
 		{"inproc.channel", "inproc.channel://benchmark_test"},
+		{"inproc.channel.msr", "inproc.channel.msr://benchmark_test"},
+		{"inproc.channel.sr", "inproc.channel.sr://benchmark_test"},
+		{"inproc.channel.rw", "inproc.channel://benchmark_test"},
 		{"inproc.iopipe", "inproc.iopipe://benchmark_test"},
 		{"inproc.netpipe", "inproc.netpipe://benchmark_test"},
 		{"ipc", "ipc:///tmp/benchmark_test.sock"},
 		{"tcp", "tcp://127.0.0.1:33833"},
 		{"ws", "ws://127.0.0.1:44844/ws"},
+		{"ws.sr", "ws.sr://127.0.0.1:44844/ws"},
+		{"ws.rw", "ws.rw://127.0.0.1:44844/ws"},
 	}
 
 	sizes = []struct {

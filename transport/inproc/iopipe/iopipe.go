@@ -18,6 +18,8 @@ type (
 		r *io.PipeReader
 		io.Reader
 		*io.PipeWriter
+		laddr net.Addr
+		raddr net.Addr
 	}
 )
 
@@ -30,7 +32,7 @@ func init() {
 	transport.RegisterTransport(Transport)
 }
 
-func newPipe(opts options.Options) (net.Conn, net.Conn) {
+func newPipe(laddr, raddr net.Addr, opts options.Options) (net.Conn, net.Conn) {
 	lpr, rpw := io.Pipe()
 	rpr, lpw := io.Pipe()
 	readBufSize := opts.GetOptionDefault(inproc.Options.ReadBuffer).(int)
@@ -38,10 +40,14 @@ func newPipe(opts options.Options) (net.Conn, net.Conn) {
 			r:          lpr,
 			Reader:     bufio.NewReaderSize(lpr, readBufSize),
 			PipeWriter: lpw,
+			laddr:      laddr,
+			raddr:      raddr,
 		}, &pipe{
 			r:          rpr,
 			Reader:     bufio.NewReaderSize(rpr, readBufSize),
 			PipeWriter: rpw,
+			laddr:      raddr,
+			raddr:      laddr,
 		}
 }
 
@@ -54,11 +60,11 @@ func (p *pipe) Close() error {
 }
 
 func (p *pipe) LocalAddr() net.Addr {
-	return nil
+	return p.laddr
 }
 
 func (p *pipe) RemoteAddr() net.Addr {
-	return nil
+	return p.raddr
 }
 
 func (p *pipe) SetDeadline(t time.Time) error {

@@ -28,7 +28,7 @@ type (
 	}
 )
 
-// NewPair create a pair of Socket actions.
+// NewPair create a pair of Sockets.
 func NewPair() (Socket, Socket) {
 	ca, cb := make(chan *message.Message), make(chan *message.Message)
 	lk := &sync.Mutex{}

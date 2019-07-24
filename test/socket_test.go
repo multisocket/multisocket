@@ -1,3 +1,5 @@
+// +build socket
+
 package test
 
 import (
@@ -19,7 +21,7 @@ import (
 
 func TestSocketSendRecv(t *testing.T) {
 	for idx := range sizes {
-		if idx%2 != 0 {
+		if idx%3 != 0 {
 			continue
 		}
 		size := sizes[idx]
@@ -78,7 +80,7 @@ func TestSocketMaxRecvContentLength(t *testing.T) {
 
 func TestSocketCloseSender(t *testing.T) {
 	for idx := range sizes {
-		if idx%3 != 0 {
+		if idx%4 != 0 {
 			continue
 		}
 
@@ -133,7 +135,7 @@ func testSocketSendRecv(t *testing.T, addr string, sz int) {
 		msg      *message.Message
 	)
 	szMin := sz / 2
-	for i := 0; i < 2000; i++ {
+	for i := 0; i < 1000; i++ {
 		content = genRandomContent(szMin + rand.Intn(szMin+1))
 		if err = clisock.Send(content); err != nil {
 			t.Errorf("Send error: %s", err)
@@ -142,7 +144,7 @@ func testSocketSendRecv(t *testing.T, addr string, sz int) {
 			t.Errorf("Recv error: %s", err)
 		}
 		if !bytes.Equal(content, msg.Content) {
-			t.Errorf("send/recv not equal: randSeed=%d, i=%d, len=%d/%d", randSeed, i, len(content), len(msg.Content))
+			t.Errorf("send/recv not equal: sz=%d, randSeed=%d, i=%d, len=%d/%d", sz, randSeed, i, len(content), len(msg.Content))
 		}
 		msg.FreeAll()
 	}
@@ -297,7 +299,7 @@ func testSocketCloseSender(t *testing.T, addr string, sz int) {
 	}
 
 	srvsock = multisocket.New(nil)
-	clisock = multisocket.New(options.OptionValues{multisocket.Options.SendQueueSize: 6400})
+	clisock = multisocket.New(options.OptionValues{multisocket.Options.SendQueueSize: 640})
 	if err = sa.Listen(srvsock); err != nil {
 		t.Errorf("server listen error: %s", err)
 	}
@@ -305,7 +307,7 @@ func testSocketCloseSender(t *testing.T, addr string, sz int) {
 		t.Errorf("client dial error: %s", err)
 	}
 
-	N := 10000
+	N := 2000
 	go func() {
 		szMin := sz / 2
 		for i := 0; i < N; i++ {
