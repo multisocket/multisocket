@@ -86,53 +86,48 @@ func (c *connector) checkLimit(checkNoLimit bool) {
 		return
 	}
 
-	if checkNoLimit && c.limit == -1 {
-		// start connecting
-		for l := range c.listeners {
-			l.start()
+	if c.limit == -1 {
+		if checkNoLimit {
+			c.startConnecting()
 		}
-
-		for d := range c.dialers {
-			d.start()
-		}
-		if log.IsLevelEnabled(log.DebugLevel) {
-			log.WithField("domain", "connector").
-				WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
-				WithField("action", "start").
-				Debug("check limit")
-		}
-	} else if c.limit != -1 && c.limit > len(c.pipes) {
+	} else if len(c.pipes) < c.limit {
 		// below limit
-		// start connecting
-		for l := range c.listeners {
-			l.start()
-		}
+		c.startConnecting()
+	} else {
+		// exceed limit
+		c.stopConnecting()
+	}
+}
 
-		for d := range c.dialers {
-			d.start()
-		}
-		if log.IsLevelEnabled(log.DebugLevel) {
-			log.WithField("domain", "connector").
-				WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
-				WithField("action", "start").
-				Debug("check limit")
-		}
-	} else if c.limit != -1 && c.limit <= len(c.pipes) {
-		// check exceed limit
-		// stop connecting
-		for l := range c.listeners {
-			l.stop()
-		}
+func (c *connector) startConnecting() {
+	for l := range c.listeners {
+		l.start()
+	}
 
-		for d := range c.dialers {
-			d.stop()
-		}
-		if log.IsLevelEnabled(log.DebugLevel) {
-			log.WithField("domain", "connector").
-				WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
-				WithField("action", "stop").
-				Debug("check limit")
-		}
+	for d := range c.dialers {
+		d.start()
+	}
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "connector").
+			WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
+			WithField("action", "start").
+			Debug("check limit")
+	}
+}
+
+func (c *connector) stopConnecting() {
+	for l := range c.listeners {
+		l.stop()
+	}
+
+	for d := range c.dialers {
+		d.stop()
+	}
+	if log.IsLevelEnabled(log.DebugLevel) {
+		log.WithField("domain", "connector").
+			WithFields(log.Fields{"limit": c.limit, "pipes": len(c.pipes)}).
+			WithField("action", "stop").
+			Debug("check limit")
 	}
 }
 

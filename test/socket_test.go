@@ -178,41 +178,8 @@ func testSocketSwitch(t *testing.T, addr string, hops uint8) {
 	}
 	clisock = swBack
 
-	msgCount := 0
-	done := make(chan struct{})
-	go func() {
-		var (
-			err error
-			msg *message.Message
-		)
-		for {
-			if msg, err = srvsock.RecvMsg(); err != nil {
-				if err != errs.ErrClosed {
-					t.Errorf("RecvMsg error: %s", err)
-				}
-				break
-			}
-			if msg.Hops != hops {
-				t.Errorf("Server RecvMsg Hops(%d) != %d", msg.Hops, hops)
-			}
-
-			if string(msg.Content) == "done" {
-				// done
-				break
-			}
-
-			if msg.TTL+msg.Hops != sendTTL {
-				t.Errorf("Server RecvMsg TTL(%d)+Hops(%d) != SendTTL(%d)", msg.TTL, msg.Hops, sendTTL)
-			}
-
-			if err = srvsock.SendTo(msg.Source, msg.Content); err != nil {
-				t.Errorf("SendTo error: %s", err)
-			}
-			msg.FreeAll()
-			msgCount++
-		}
-		done <- struct{}{}
-	}()
+	done := make(chan int)
+	go testSocketSwitchServer(t, srvsock, sendTTL, hops, done)
 
 	var (
 		content = []byte("Switch Test")
@@ -225,7 +192,8 @@ func testSocketSwitch(t *testing.T, addr string, hops uint8) {
 	if err = clisock.SendMsg(message.NewSendMessage(0, message.SendTypeToOne, 128, nil, nil, []byte("done"))); err != nil {
 		t.Errorf("Send error: %s", err)
 	}
-	<-done
+
+	msgCount := <-done
 	if hops > sendTTL {
 		if msgCount != 0 {
 			t.Errorf("%d messages ingore TTL(%d/%d)", msgCount, hops, sendTTL)
@@ -235,6 +203,41 @@ func testSocketSwitch(t *testing.T, addr string, hops uint8) {
 			t.Errorf("%d messages ingore TTL(%d/%d)", 100-msgCount, hops, sendTTL)
 		}
 	}
+}
+
+func testSocketSwitchServer(t *testing.T, srvsock multisocket.Socket, sendTTL, hops uint8, done chan int) {
+	var (
+		err error
+		msg *message.Message
+	)
+	msgCount := 0
+	for {
+		if msg, err = srvsock.RecvMsg(); err != nil {
+			if err != errs.ErrClosed {
+				t.Errorf("RecvMsg error: %s", err)
+			}
+			break
+		}
+		if msg.Hops != hops {
+			t.Errorf("Server RecvMsg Hops(%d) != %d", msg.Hops, hops)
+		}
+
+		if string(msg.Content) == "done" {
+			// done
+			break
+		}
+
+		if msg.TTL+msg.Hops != sendTTL {
+			t.Errorf("Server RecvMsg TTL(%d)+Hops(%d) != SendTTL(%d)", msg.TTL, msg.Hops, sendTTL)
+		}
+
+		if err = srvsock.SendTo(msg.Source, msg.Content); err != nil {
+			t.Errorf("SendTo error: %s", err)
+		}
+		msg.FreeAll()
+		msgCount++
+	}
+	done <- msgCount
 }
 
 func testSocketMaxRecvContentLength(t *testing.T, addr string, sz int) {

@@ -5,6 +5,7 @@ package ipc
 
 import (
 	"net"
+	"os"
 	"sync"
 
 	"github.com/Microsoft/go-winio"
@@ -52,7 +53,7 @@ func (l *listener) Listen(opts options.Options) error {
 			return errs.ErrBadAddr
 		}
 	} else if !os.IsNotExist(err) {
-			return err
+		return err
 	}
 
 	config := &winio.PipeConfig{
@@ -111,7 +112,7 @@ func (t ipcTran) NewDialer(address string) (transport.Dialer, error) {
 		return nil, err
 	}
 
-	d := &dialer{path:    address }
+	d := &dialer{path: address}
 
 	return d, nil
 }
@@ -124,8 +125,8 @@ func (t ipcTran) NewListener(address string) (transport.Listener, error) {
 	}
 
 	l := &listener{
-		  path:    address,
-		  closedq: make(chan struct{}),
+		path:    address,
+		closedq: make(chan struct{}),
 	}
 
 	return l, nil

@@ -10,8 +10,8 @@ import (
 type (
 	listenerOptions struct {
 		SecurityDescriptor options.StringOption
-		InputBufferSize options.Int32Option
-		OutputBufferSize options.Int32Option
+		InputBufferSize    options.Int32Option
+		OutputBufferSize   options.Int32Option
 	}
 
 	ipcOptions struct {
@@ -23,8 +23,8 @@ var (
 	// OptionDomains is option's domain
 	OptionDomains = append(transport.OptionDomains, "ipc")
 	// Options for windows named pipe
-	Options = ipcOptions {
-		Listener: listenerOptions {
+	Options = ipcOptions{
+		Listener: listenerOptions{
 			// OptionSecurityDescriptor represents a Windows security
 			// descriptor in SDDL format (string).  This can only be set on
 			// a Listener, and must be set before the Listen routine
@@ -40,7 +40,7 @@ var (
 			// This is only for Listeners, and must be set before the
 			// Listener is started.
 			OutputBufferSize: options.NewInt32Option(4096),
-		}
+		},
 	}
 )
 

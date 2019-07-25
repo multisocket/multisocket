@@ -1,8 +1,8 @@
 package inproc
 
 import (
-	"github.com/multisocket/multisocket/transport"
 	"github.com/multisocket/multisocket/options"
+	"github.com/multisocket/multisocket/transport"
 )
 
 type (

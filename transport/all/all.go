@@ -5,8 +5,8 @@ package all
 
 import (
 	// import transports
-	_ "github.com/multisocket/multisocket/transport/inproc/inproc"
 	_ "github.com/multisocket/multisocket/transport/inproc/channel"
+	_ "github.com/multisocket/multisocket/transport/inproc/inproc"
 	_ "github.com/multisocket/multisocket/transport/inproc/iopipe"
 	_ "github.com/multisocket/multisocket/transport/inproc/netpipe"
 	_ "github.com/multisocket/multisocket/transport/ipc"

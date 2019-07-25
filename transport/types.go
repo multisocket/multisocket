@@ -44,8 +44,8 @@ type (
 )
 
 // NewAddress create an address
-func NewAddress(scheme, addr string) *Address{
-	return &Address{scheme,addr}
+func NewAddress(scheme, addr string) *Address {
+	return &Address{scheme, addr}
 }
 
 // Network address's network

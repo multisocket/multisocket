@@ -9,7 +9,7 @@ type (
 	SwitchMiddlewareFunc func(msg *message.Message) *message.Message
 )
 
-// StartSwitch start switch messages bewteen back and front sockets
+// StartSwitch start switch messages between back and front sockets
 func StartSwitch(backSock, frontSock Socket, mid SwitchMiddlewareFunc) {
 	go forward(backSock, frontSock, mid)
 	go forward(frontSock, backSock, mid)
