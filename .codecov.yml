@@ -1,0 +1,7 @@
+ignore:
+  - perf/*
+  - test/*
+  - examples/*
+  - *_test.go
+coverage:
+  range: 50..85
