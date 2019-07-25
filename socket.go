@@ -61,6 +61,11 @@ func NewNoRecv(ovs options.OptionValues) Socket {
 	return New(ovs)
 }
 
+// NewDefault creates a default Socket
+func NewDefault() Socket {
+	return New(nil)
+}
+
 // New creates a Socket
 func New(ovs options.OptionValues) Socket {
 	s := &socket{
