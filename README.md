@@ -1,5 +1,5 @@
 # multisocket
-![CircleCI](https://img.shields.io/circleci/build/github/multisocket/multisocket?logo=linux)
+[![CircleCI](https://circleci.com/gh/multisocket/multisocket.svg?style=svg)](https://circleci.com/gh/multisocket/multisocket)
 [![codecov](https://codecov.io/gh/multisocket/multisocket/branch/master/graph/badge.svg)](https://codecov.io/gh/multisocket/multisocket)
 [![Go Report Card](https://goreportcard.com/badge/github.com/multisocket/multisocket)](https://goreportcard.com/report/github.com/multisocket/multisocket)
 [![Godoc](https://img.shields.io/badge/godoc-reference-blue)](https://godoc.org/github.com/multisocket/multisocket)
