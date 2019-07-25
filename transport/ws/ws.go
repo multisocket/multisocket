@@ -80,7 +80,7 @@ func init() {
 	transport.RegisterTransport(RwTransport)
 	transport.RegisterTransport(SrTransport)
 	// default transport
-	transport.RegisterTransportWithScheme(SrTransport, "ws")
+	transport.RegisterTransportWithScheme(RwTransport, "ws")
 }
 
 func noCheckOrigin(r *http.Request) bool {
@@ -103,6 +103,7 @@ func (c *srWsConn) Send(b []byte) (err error) {
 }
 
 func (c *srWsConn) Recv() (b []byte, err error) {
+	// unable to know size in advance, so unable to use pool, then cause a bytes allocation.
 	_, b, err = c.Conn.ReadMessage()
 	return
 }
