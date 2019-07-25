@@ -8,6 +8,8 @@ import (
 	"github.com/multisocket/multisocket/message"
 	"github.com/multisocket/multisocket/options"
 
+	"bufio"
+
 	"github.com/multisocket/multisocket/errs"
 	"github.com/multisocket/multisocket/transport"
 	"github.com/multisocket/multisocket/utils"
@@ -25,6 +27,9 @@ type pipe struct {
 	parent               *connector
 	d                    *dialer
 	l                    *listener
+
+	// Reader
+	r io.Reader
 
 	sr  SendReceiver
 	msr MsgSendReceiver
@@ -58,7 +63,15 @@ func newPipe(parent *connector, tc transport.Connection, d *dialer, l *listener,
 		parent: parent,
 		d:      d,
 		l:      l,
+
+		// Reader
+		r: tc,
 	}
+	readBuffer := opts.GetOptionDefault(Options.Pipe.ReadBuffer).(int)
+	if readBuffer > 0 {
+		p.r = bufio.NewReaderSize(tc, readBuffer)
+	}
+
 	p.msgFreeLevel = message.FreeAll
 	if p.raw {
 		if sr, ok := tc.RawConn().(SendReceiver); ok {
@@ -140,7 +153,8 @@ func (p *pipe) Close() error {
 }
 
 func (p *pipe) Read(b []byte) (n int, err error) {
-	if n, err = p.Connection.Read(b); err != nil {
+	// if n, err = p.Connection.Read(b); err != nil {
+	if n, err = p.r.Read(b); err != nil {
 		if err == io.EOF {
 			if n > 0 {
 				err = nil
