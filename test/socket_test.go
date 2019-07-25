@@ -1,4 +1,4 @@
-// +build socket
+// +build all socket
 
 package test
 

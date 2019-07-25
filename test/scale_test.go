@@ -1,4 +1,4 @@
-// +build scale
+// +build all scale
 
 package test
 
