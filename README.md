@@ -1,4 +1,10 @@
 # multisocket
+![CircleCI](https://img.shields.io/circleci/build/github/multisocket/multisocket?logo=linux)
+[![codecov](https://codecov.io/gh/multisocket/multisocket/branch/master/graph/badge.svg)](https://codecov.io/gh/multisocket/multisocket)
+[![Go Report Card](https://goreportcard.com/badge/github.com/multisocket/multisocket)](https://goreportcard.com/report/github.com/multisocket/multisocket)
+[![Godoc](https://img.shields.io/badge/godoc-reference-blue)](https://godoc.org/github.com/multisocket/multisocket)
+![GitHub](https://img.shields.io/github/license/multisocket/multisocket)
+
 multisocket is an network library. Like nanomsg and zeromq, multisocket supports many transports: inproc, ipc, tcp etc. 
 Unlike them, multisocket implements a message based bidirectional tx/rx independent and stateless Socket, Based on it, various protocols(reqrep, pubsub, pipline, bus etc) are built. multisocket provides sematic and easy to use interfaces to help you build complex message systems.
 
