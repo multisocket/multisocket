@@ -28,6 +28,16 @@ var (
 		{"ws.rw", "ws.rw://127.0.0.1:44844/ws"},
 	}
 
+	simpleTransports = []struct {
+		name string
+		addr string
+	}{
+		{"inproc", "inproc://benchmark_test.inproc"},
+		{"ipc", "ipc:///tmp/benchmark_test.sock"},
+		{"tcp", "tcp://127.0.0.1:33833"},
+		{"ws", "ws://127.0.0.1:44842/ws"},
+	}
+
 	sizes = []struct {
 		name string
 		sz   int

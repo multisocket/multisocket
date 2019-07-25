@@ -1,5 +1,3 @@
-// +build all scale
-
 package test
 
 // This simple test just fires off a crapton of inproc clients, to see
@@ -24,17 +22,8 @@ import (
 	_ "github.com/multisocket/multisocket/transport/inproc"
 )
 
-func TestScalabilityTCPSendReply(t *testing.T) {
-	testScalabilitySendReply(t, "tcp://127.0.0.1:9991", 10, 500)
-}
-
-func TestScalabilityTCPSendAll(t *testing.T) {
-	testScalabilitySendAll(t, "tcp://127.0.0.1:9992", 10, 1000)
-}
-
 func TestScalabilityInprocSendReply(t *testing.T) {
 	testScalabilitySendReply(t, "inproc://atscale_send_reply", 10, 20000)
-	// testScalabilitySendReply(t, "inproc://atscale_send_reply", 2, 1000)
 }
 
 func TestScalabilityInprocSendAll(t *testing.T) {

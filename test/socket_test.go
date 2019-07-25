@@ -1,5 +1,3 @@
-// +build all socket
-
 package test
 
 import (
@@ -57,7 +55,7 @@ func TestSocketSwitch(t *testing.T) {
 
 func TestSocketMaxRecvContentLength(t *testing.T) {
 	for idx := range sizes {
-		if idx%3 != 0 {
+		if idx%4 != 0 {
 			continue
 		}
 
@@ -87,8 +85,8 @@ func TestSocketCloseSender(t *testing.T) {
 		size := sizes[idx]
 		t.Run(size.name, func(t *testing.T) {
 			sz := size.sz
-			for idx := range transports {
-				tp := transports[idx]
+			for idx := range simpleTransports {
+				tp := simpleTransports[idx]
 				t.Run(tp.name, func(t *testing.T) {
 					addr := tp.addr
 					testSocketCloseSender(t, addr, sz)
@@ -299,7 +297,7 @@ func testSocketCloseSender(t *testing.T, addr string, sz int) {
 	}
 
 	srvsock = multisocket.New(nil)
-	clisock = multisocket.New(options.OptionValues{multisocket.Options.SendQueueSize: 640})
+	clisock = multisocket.New(options.OptionValues{multisocket.Options.SendQueueSize: 64})
 	if err = sa.Listen(srvsock); err != nil {
 		t.Errorf("server listen error: %s", err)
 	}
@@ -307,7 +305,7 @@ func testSocketCloseSender(t *testing.T, addr string, sz int) {
 		t.Errorf("client dial error: %s", err)
 	}
 
-	N := 2000
+	N := 256
 	go func() {
 		szMin := sz / 2
 		for i := 0; i < N; i++ {
