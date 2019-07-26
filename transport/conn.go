@@ -21,7 +21,8 @@ func (conn *connection) Transport() Transport {
 
 // Writev write multiple bytes at once
 func (conn *connection) Writev(v ...[]byte) (int64, error) {
-	return (*net.Buffers)(&v).WriteTo(conn.Conn)
+	b := net.Buffers(v)
+	return b.WriteTo(conn.Conn)
 }
 
 // LocalAddress return local address

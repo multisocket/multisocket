@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"bytes"
 	"io"
 	"net"
 	"net/http"
@@ -55,6 +56,7 @@ type (
 	// SendReceiver
 	srWsConn struct {
 		*wsConn
+		lastBuf *bytes.Buffer
 	}
 
 	// CheckOriginFunc check request origin
@@ -74,13 +76,20 @@ var (
 		"multisocket.binary": websocket.BinaryMessage,
 		"multisocket.text":   websocket.TextMessage,
 	}
+
+	// buffer pool for recv
+	bufPool = &sync.Pool{
+		New: func() interface{} {
+			return bytes.NewBuffer(nil)
+		},
+	}
 )
 
 func init() {
 	transport.RegisterTransport(RwTransport)
 	transport.RegisterTransport(SrTransport)
 	// default transport
-	transport.RegisterTransportWithScheme(RwTransport, "ws")
+	transport.RegisterTransportWithScheme(SrTransport, "ws")
 }
 
 func noCheckOrigin(r *http.Request) bool {
@@ -103,9 +112,24 @@ func (c *srWsConn) Send(b []byte) (err error) {
 }
 
 func (c *srWsConn) Recv() (b []byte, err error) {
-	// unable to know size in advance, so unable to use pool, then cause a bytes allocation.
-	_, b, err = c.Conn.ReadMessage()
-	return
+	if c.lastBuf != nil {
+		c.lastBuf.Reset()
+		bufPool.Put(c.lastBuf)
+		c.lastBuf = nil
+	}
+
+	if _, c.r, err = c.Conn.NextReader(); err != nil {
+		return
+	}
+
+	c.lastBuf = bufPool.Get().(*bytes.Buffer)
+	io.Copy(c.lastBuf, c.r)
+	return c.lastBuf.Bytes(), nil
+	/*
+		// FIXME: unable to know size in advance, so unable to use pool, then cause a bytes allocation.
+		_, b, err = c.Conn.ReadMessage()
+		return
+	*/
 }
 
 // ReadWriter
